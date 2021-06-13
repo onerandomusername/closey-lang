@@ -1,6 +1,6 @@
 [package]
-name = "curlyc"
-version = "0.2.4"
+name = "closeyc"
+version = "0.0.1"
 authors = ["jenra"]
 edition = "2018"
 
@@ -9,5 +9,4 @@ edition = "2018"
 [dependencies]
 codespan-reporting = "0.11.0"
 logos = "0.11.4"
-dirs = "1.0.5"
-regex = "1.1.9"
+dirs = "1.0"

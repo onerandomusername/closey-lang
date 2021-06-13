@@ -12,10 +12,10 @@ use std::result::Result;
 
 use parser::AST;
 
-use curlyc::backends::c::codegen;
-use curlyc::frontend::ir;
-use curlyc::frontend::ir::{DuplicateModuleInfo, IRError, IR};
-use curlyc::frontend::parser;
+use closeyc::backends::c::codegen;
+use closeyc::frontend::ir;
+use closeyc::frontend::ir::{DuplicateModuleInfo, IRError, IR};
+use closeyc::frontend::parser;
 
 pub static DEBUG: bool = false;
 
@@ -312,7 +312,7 @@ fn main() -> Result<(), ()> {
                         let mut ir = IR {
                             modules: HashMap::with_capacity(0),
                         };
-                        match curlyc::check(&[(file, false)], &[contents], &mut ir, true, true) {
+                        match closeyc::check(&[(file, false)], &[contents], &mut ir, true, true) {
                             Ok(_) => println!("No errors found"),
                             Err(_) => return Err(()),
                         }
@@ -1030,7 +1030,7 @@ fn compile(
     require_main: bool,
 ) -> Result<Vec<(String, String)>, ()> {
     // Check the file
-    match curlyc::check(filenames, codes, ir, require_main, true) {
+    match closeyc::check(filenames, codes, ir, require_main, true) {
         Ok(_) => (),
         Err(_) => return Err(()),
     }
