@@ -1,6 +1,0 @@
-x=5
-y=x+4
-z=6*y
-with a = z * z,
-	a + z
-

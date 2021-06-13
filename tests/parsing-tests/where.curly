@@ -1,4 +1,0 @@
-[
-	a in iter where
-		a >= 2
-]

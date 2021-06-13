@@ -1,3 +1,0 @@
-primes = n in (from 2) where
-	for all p in (range 2 n)
-		p % n != 0
