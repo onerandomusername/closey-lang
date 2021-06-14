@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use super::ir::Location;
-use super::parser::AST;
+use super::parser::Ast;
 
 #[derive(Clone, Debug)]
 pub struct HashSetWrapper<T>(pub HashSet<T>);
@@ -252,9 +252,9 @@ impl Type {
     }
 }
 
-// ast_sum_builder_helper(AST, &str, &mut HashMap<TypeRc, Span>, &mut HashMap<String, Span>) -> Type
+// ast_sum_builder_helper(Ast, &str, &mut HashMap<TypeRc, Span>, &mut HashMap<String, Span>) -> Type
 // Helper function for building sum/union types.
-fn ast_sum_builder_helper(ast: AST, filename: &str, fields: &mut HashMap<TypeRc, Span>, labels: &mut HashMap<String, (Span, TypeRc)>) -> Type {
+fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc, Span>, labels: &mut HashMap<String, (Span, TypeRc)>) -> Type {
     let s = ast.get_span();
     let v = convert_ast_to_type(ast, filename);
     if let Type::Union(v) = v {
@@ -317,12 +317,12 @@ fn ast_sum_builder_helper(ast: AST, filename: &str, fields: &mut HashMap<TypeRc,
     Type::Unknown
 }
 
-// convert_ast_to_type(AST, &IR) -> Type
+// convert_ast_to_type(Ast, &IR) -> Type
 // Converts an ast node into a type.
-pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
+pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
     match ast {
         // Symbols
-        AST::Symbol(_, v) => {
+        Ast::Symbol(_, v) => {
             match v.as_str() {
                 // Primitives
                 "Int" => Type::Int,
@@ -337,8 +337,8 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
         }
 
         // Enums
-        AST::Prefix(_, op, v) if op == "enum" => {
-            if let AST::Symbol(_, v) = *v {
+        Ast::Prefix(_, op, v) if op == "enum" => {
+            if let Ast::Symbol(_, v) = *v {
                 Type::Enum(v)
             } else {
                 unreachable!("enum always has a symbol");
@@ -346,8 +346,8 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
         }
 
         // Pointer
-        AST::Prefix(_, op, v) if op == "ptr" => {
-            if let AST::Symbol(_, v) = *v {
+        Ast::Prefix(_, op, v) if op == "ptr" => {
+            if let Ast::Symbol(_, v) = *v {
                 Type::Pointer(v)
             } else {
                 unreachable!("ptr always has a symbol");
@@ -355,7 +355,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
         }
 
         // Sum types
-        AST::Infix(_, op, l, r) if op == "|" => {
+        Ast::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
             let mut labels = HashMap::new();
             let mut acc = *l;
@@ -366,7 +366,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
 
             loop {
                 match acc {
-                    AST::Infix(_, op, l, r) if op == "|" => {
+                    Ast::Infix(_, op, l, r) if op == "|" => {
                         let t = ast_sum_builder_helper(*r, filename, &mut fields, &mut labels);
                         if t != Type::Unknown {
                             return t;
@@ -400,7 +400,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
         }
 
         // Function types
-        AST::Infix(_, op, l, r) if op == "->" => {
+        Ast::Infix(_, op, l, r) if op == "->" => {
             let l = convert_ast_to_type(*l, filename);
             let r = convert_ast_to_type(*r, filename);
 
@@ -417,7 +417,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
             }
         }
 
-        AST::Infix(_, op, l, r) if op == ":" => {
+        Ast::Infix(_, op, l, r) if op == ":" => {
             let s = r.get_span();
             let r = convert_ast_to_type(*r, filename);
 
@@ -427,7 +427,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
                 Type::DuplicateTypeError(a, b, c)
             } else if let Type::Enum(_) = r {
                 Type::UndeclaredTypeError(Location::new(s, filename))
-            } else if let AST::Symbol(_, s) = *l {
+            } else if let Ast::Symbol(_, s) = *l {
                 Type::Tag(s, arc::new(r))
             } else {
                 unreachable!("Tag always has symbol as left operand");

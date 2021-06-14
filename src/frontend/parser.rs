@@ -76,50 +76,26 @@ pub enum Token {
     #[token(",")]
     Comma,
 
-    #[token(";")]
-    Semicolon,
+    #[token("\\")]
+    Backslash,
 
     #[token(".")]
     Dot,
 
-    #[token("..")]
-    Range,
+    #[token("$")]
+    Dollar,
 
-    #[token("=")]
-    Assign,
-
-    #[token(":=")]
-    Walrus,
-
-    #[token("*")]
-    Mul,
-
-    #[regex(r"/|%")]
-    DivMod,
-
-    #[token("+")]
-    Add,
-
-    #[token("-")]
-    Sub,
-
-    #[regex(r"<<|>>")]
-    BitShift,
-
-    #[regex(r"<|>|<=|>=|==|!=")]
-    Compare,
-
-    #[token("&")]
-    Ampersand,
+    #[token(";")]
+    Semicolon,
 
     #[token("|")]
     Bar,
 
-    #[token("^")]
-    Caret,
+    #[token("=")]
+    Assign,
 
-    #[token("$")]
-    Dollar,
+    #[regex(r"(;~!\$%\^&\*\-\+|\./\?)+")]
+    Operator,
 
     // Numbers
     #[regex(r"[0-9]+", |lex| lex.slice().parse())]
@@ -147,6 +123,9 @@ pub enum Token {
     #[regex(r#"'([^\\']|\\[nrt'"0])'"#, |lex| convert_chars(lex.slice(), 1).bytes().next().unwrap())]
     Char(u8),
 
+    #[regex(r"'[a-zA-Z_0-9]+", |lex| lex.slice()[1..].to_owned())]
+    Generic(String),
+
     // Symbols (variables and stuff)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_']*")]
     Symbol,
@@ -160,14 +139,10 @@ pub enum Token {
     #[regex(r##"#"([^"]|"[^#])*"#"##, |lex| convert_chars(lex.slice(), 2))]
     String(String),
 
-    // Booleans
-    #[token("true")]
-    True,
-
-    #[token("false")]
-    False,
-
     // Arrows
+    #[token("+>")]
+    PlusArrow,
+
     #[token("->")]
     RightArrow,
 
@@ -176,34 +151,13 @@ pub enum Token {
 
     // Keywords
     #[token("let")]
-    With,
+    Let,
 
-    #[token("for")]
-    For,
-
-    #[token("some")]
-    Some,
-
-    #[token("all")]
-    All,
-
-    #[token("if")]
-    If,
-
-    #[token("then")]
-    Then,
-
-    #[token("else")]
-    Else,
-
-    #[token("where")]
-    Where,
+    #[token("in")]
+    In,
 
     #[token("import")]
     Import,
-
-    #[token("as")]
-    As,
 
     #[token("module")]
     Module,
@@ -211,44 +165,17 @@ pub enum Token {
     #[token("extern")]
     Extern,
 
-    #[token("pass")]
-    Pass,
-
-    #[token("stop")]
-    Stop,
-
     #[token("type")]
     Type,
 
-    #[token("enum")]
-    Enum,
-
     #[token("ptr")]
     Pointer,
-
-    #[token("class")]
-    Class,
-
-    #[token("lambda")]
-    Lambda,
 
     #[token("match")]
     Match,
 
     #[token("to")]
     To,
-
-    #[token("and")]
-    And,
-
-    #[token("or")]
-    Or,
-
-    #[token("xor")]
-    Xor,
-
-    #[token("in")]
-    In,
 
     Unreachable,
 }
@@ -348,7 +275,7 @@ impl<'a> Parser<'a> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum AST {
+pub enum Ast {
     Empty,
 
     // Numbers
@@ -357,15 +284,14 @@ pub enum AST {
     Word(Span, u64),
     Char(Span, u8),
 
-    // Booleans
-    True(Span),
-    False(Span),
-
     // String
     String(Span, String),
 
     // Symbol (variables and stuff)
     Symbol(Span, String),
+
+    // Generic type ('a)
+    Generic(Span, String),
 
     // Enum (ie, atoms)
     Enum(Span, String),
@@ -374,76 +300,71 @@ pub enum AST {
     Annotation(Span, String),
 
     // Lists
-    List(Span, Vec<AST>),
+    List(Span, Vec<Ast>),
 
     // Function Application
-    Application(Span, Box<AST>, Box<AST>),
+    Application(Span, Box<Ast>, Box<Ast>),
 
     // Prefix expressions
-    Prefix(Span, String, Box<AST>),
+    Prefix(Span, String, Box<Ast>),
 
     // Infix expressions
-    Infix(Span, String, Box<AST>, Box<AST>),
+    Infix(Span, String, Box<Ast>, Box<Ast>),
 
     // Casting
-    As(Span, Box<AST>, Box<AST>),
-
-    // If expressions
-    If(Span, Box<AST>, Box<AST>, Box<AST>),
+    As(Span, Box<Ast>, Box<Ast>),
 
     // Assignments
-    Assign(Span, String, Box<AST>),
+    Assign(Span, String, Box<Ast>),
 
     // Assignments with types
-    AssignTyped(Span, String, Box<AST>, Box<AST>),
+    AssignTyped(Span, String, Box<Ast>, Box<Ast>),
 
     // Assignment of types
-    AssignType(Span, String, Box<AST>),
+    AssignType(Span, String, Box<Ast>),
 
     // Assignment of functions
-    AssignFunction(Span, String, Vec<(String, AST)>, Box<AST>),
+    AssignFunction(Span, String, Vec<(String, Ast)>, Box<Ast>),
 
     // Lambda functions
-    Lambda(Span, Vec<(String, AST)>, Box<AST>),
+    Lambda(Span, Vec<(String, Ast)>, Box<Ast>),
 
     // Match expressions
-    Match(Span, Box<AST>, Vec<(AST, AST)>),
+    Match(Span, Box<Ast>, Vec<(Ast, Ast)>),
 
     // Scoping
-    With(Span, Vec<AST>, Box<AST>),
-    Walrus(Span, String, Box<AST>),
+    With(Span, Vec<Ast>, Box<Ast>),
+    Walrus(Span, String, Box<Ast>),
 
     // Imports
-    Import(Span, Box<AST>, Vec<String>),
-    QualifiedImport(Span, Box<AST>, String),
+    Import(Span, Box<Ast>, Vec<String>),
+    QualifiedImport(Span, Box<Ast>, String),
 
     // Header
-    Header(Span, Box<AST>, Vec<(Span, String, AST)>, Vec<AST>),
-    LibHeader(Span, Box<AST>, Vec<(Span, String, usize, bool, AST)>),
+    Header(Span, Box<Ast>, Vec<(Span, String, Ast)>, Vec<Ast>),
+    LibHeader(Span, Box<Ast>, Vec<(Span, String, usize, bool, Ast)>),
 
     // External functions
-    Extern(Span, String, String, Box<AST>),
+    Extern(Span, String, String, Box<Ast>),
 }
 
-impl AST {
+impl Ast {
     pub fn get_span(&self) -> Span {
         match self {
             Self::Int(s, _)
             | Self::Float(s, _)
             | Self::Word(s, _)
             | Self::Char(s, _)
-            | Self::True(s)
-            | Self::False(s)
             | Self::String(s, _)
             | Self::List(s, _)
             | Self::Symbol(s, _)
+            | Self::Generic(s, _)
             | Self::Enum(s, _)
             | Self::Annotation(s, _)
             | Self::Application(s, _, _)
             | Self::Prefix(s, _, _)
             | Self::Infix(s, _, _, _)
             | Self::As(s, _, _)
-            | Self::If(s, _, _, _)
             | Self::Assign(s, _, _)
             | Self::AssignTyped(s, _, _, _)
             | Self::AssignType(s, _, _)
@@ -482,7 +403,7 @@ impl ParseError {
     }
 }
 
-// call_func(ident, ident, ident) -> Result<AST, ParseError>
+// call_func(ident, ident, ident) -> Result<Ast, ParseError>
 // Calls a function and returns if an error was encountered.
 macro_rules! call_func {
     ($func: ident, $parser: ident, $state: ident) => {
@@ -496,7 +417,7 @@ macro_rules! call_func {
     };
 }
 
-// call_func_fatal(ident, ident, literal, literal, expr*) -> Result<AST, ParseError>
+// call_func_fatal(ident, ident, literal, literal, expr*) -> Result<Ast, ParseError>
 // Calls a function and returns a fatal error if unsuccessful.
 macro_rules! call_func_fatal
 {
@@ -514,7 +435,7 @@ macro_rules! call_func_fatal
     }
 }
 
-// call_optional(ident, ident) => Result<AST, ParseError>
+// call_optional(ident, ident) => Result<Ast, ParseError>
 // Calls a function and only returns if a fatal error is encountered.
 macro_rules! call_optional {
     ($func: ident, $parser: ident) => {
@@ -526,7 +447,7 @@ macro_rules! call_optional {
     };
 }
 
-// consume_nosave(ident, ident, ident, literal, literal, literal, expr*) -> Result<AST, ParseError>
+// consume_nosave(ident, ident, ident, literal, literal, literal, expr*) -> Result<Ast, ParseError>
 // Consumes a token without saving it, returning if an error was encountered.
 macro_rules! consume_nosave
 {
@@ -550,7 +471,7 @@ macro_rules! consume_nosave
     }
 }
 
-// consume_save(ident, ident, ident, literal, literal, literal, expr*) -> Result<AST, ParseError>
+// consume_save(ident, ident, ident, literal, literal, literal, expr*) -> Result<Ast, ParseError>
 // Consumes a token and saves it, returning if an error was encountered.
 macro_rules! consume_save
 {
@@ -576,7 +497,7 @@ macro_rules! consume_save
     }
 }
 
-// infixl_op(ident, ident, pat, pat) -> Result<AST, ParseError>
+// infixl_op(ident, ident, pat, pat) -> Result<Ast, ParseError>
 // Parses a left associative infix operator.
 macro_rules! infixl_op {
     ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
@@ -607,7 +528,7 @@ macro_rules! infixl_op {
                     call_func_fatal!($subfunc, $parser, "Expected value after infix operator");
 
                 // Build ast
-                left = AST::Infix(
+                left = Ast::Infix(
                     Span {
                         start: left.get_span().start,
                         end: right.get_span().end,
@@ -627,7 +548,7 @@ macro_rules! infixl_op {
     }};
 }
 
-// infixl_op(ident, ident, pat, pat) -> Result<AST, ParseError>
+// infixl_op(ident, ident, pat, pat) -> Result<Ast, ParseError>
 // Parses a right associative infix operator.
 macro_rules! infixr_op {
     ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
@@ -664,11 +585,11 @@ macro_rules! infixr_op {
 
                 #[allow(unused_assignments)]
                 if first {
-                    let mut t1 = AST::Empty;
-                    let mut t2 = AST::Empty;
+                    let mut t1 = Ast::Empty;
+                    let mut t2 = Ast::Empty;
                     acc = &mut t1;
                     swap(&mut t2, &mut top);
-                    top = AST::Infix(
+                    top = Ast::Infix(
                         Span {
                             start: t2.get_span().start,
                             end: right.get_span().end,
@@ -680,11 +601,11 @@ macro_rules! infixr_op {
                     first = false;
                     acc = &mut top;
                 } else {
-                    let mut t = AST::Empty;
-                    if let AST::Infix(_, _, _, r) = acc {
+                    let mut t = Ast::Empty;
+                    if let Ast::Infix(_, _, _, r) = acc {
                         let r1 = &mut **r;
                         swap(r1, &mut t);
-                        let ast = AST::Infix(
+                        let ast = Ast::Infix(
                             Span {
                                 start: t.get_span().start,
                                 end: right.get_span().end,
@@ -706,7 +627,7 @@ macro_rules! infixr_op {
 
         acc = &mut top;
         if !first {
-            while let AST::Infix(s, _, _, r) = acc {
+            while let Ast::Infix(s, _, _, r) = acc {
                 s.end = last.end;
                 acc = r;
             }
@@ -724,63 +645,64 @@ fn newline(parser: &mut Parser) {
     }
 }
 
-// symbol(&mut Parser) -> Result<AST, ParseError>
+// symbol(&mut Parser) -> Result<Ast, ParseError>
 // Parses a symbol.
-fn symbol(parser: &mut Parser) -> Result<AST, ParseError> {
+fn symbol(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let (token, span) = consume_save!(parser, Symbol, state, false, "");
-    Ok(AST::Symbol(span, token))
+    Ok(Ast::Symbol(span, token))
 }
 
-// access_member(&mut Parser) -> Result<AST, ParseError>
+// access_member(&mut Parser) -> Result<Ast, ParseError>
 // Parses accessing a member.
-fn access_member(parser: &mut Parser) -> Result<AST, ParseError> {
+fn access_member(parser: &mut Parser) -> Result<Ast, ParseError> {
     infixl_op!(parser, symbol, Token::ColonColon, Token::Unreachable)
 }
 
-// value(&mut Parser) -> Result<AST, ParseError>
+// value(&mut Parser) -> Result<Ast, ParseError>
 // Gets the next value.
-fn value(parser: &mut Parser) -> Result<AST, ParseError> {
+fn value(parser: &mut Parser) -> Result<Ast, ParseError> {
     // Parse symbols/accessing members
     if let Ok(v) = call_optional!(access_member, parser) {
         return Ok(v);
     }
 
     // Get token
-    let (token, span) = match parser.peek() {
+    let (token, _span) = match parser.peek() {
         Some(v) => v,
         None => return ParseError::empty(),
     };
 
+    /*
     // Check for int
     if let Token::Int(n) = token {
         let n = *n;
         parser.next();
-        Ok(AST::Int(span, n))
+        Ok(Ast::Int(span, n))
 
     // Check for float
     } else if let Token::Float(n) = token {
         let n = *n;
         parser.next();
-        Ok(AST::Float(span, n))
+        Ok(Ast::Float(span, n))
 
     // Check for word
     } else if let Token::Word(n) = token {
         let n = *n;
         parser.next();
-        Ok(AST::Word(span, n))
+        Ok(Ast::Word(span, n))
 
-    // Check for token
+    // Check for char
     } else if let Token::Char(c) = token {
         let c = *c;
         parser.next();
-        Ok(AST::Char(span, c))
+        Ok(Ast::Char(span, c))
 
     // Check for string
     } else if let Token::String(s) = token {
         let s = s.clone();
         parser.next();
-        Ok(AST::String(span, s))
+        Ok(Ast::String(span, s))
 
     // Check for enum
     } else if let Token::Enum = token {
@@ -788,7 +710,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError> {
         let state = parser.save_state();
         parser.next();
         let (t, s2) = consume_save!(parser, Symbol, state, true, "");
-        Ok(AST::Enum(
+        Ok(Ast::Enum(
             Span {
                 start: s.start,
                 end: s2.end,
@@ -799,15 +721,16 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError> {
     // True
     } else if let Token::True = token {
         parser.next();
-        Ok(AST::True(span))
+        Ok(Ast::True(span))
 
     // False
     } else if let Token::False = token {
         parser.next();
-        Ok(AST::False(span))
+        Ok(Ast::False(span))
 
     // Parenthesised expressions
-    } else if let Token::LParen = token {
+    } else */
+    if let Token::LParen = token {
         // Get value
         let state = parser.save_state();
         parser.next();
@@ -831,14 +754,14 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 }
 
-fn _as(parser: &mut Parser) -> Result<AST, ParseError> {
+fn _as(parser: &mut Parser) -> Result<Ast, ParseError> {
     let value = value(parser)?;
 
     if let Some((Token::Colon, _)) = parser.peek() {
         parser.next();
         let _type = call_func_fatal!(type_expr, parser, "Expected type after `:`");
 
-        Ok(AST::As(
+        Ok(Ast::As(
             Span {
                 start: value.get_span().start,
                 end: _type.get_span().end,
@@ -851,9 +774,9 @@ fn _as(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 }
 
-// application(&mut Parser) -> Result<AST, ParseError>
+// application(&mut Parser) -> Result<Ast, ParseError>
 // Parses function application.
-fn application(parser: &mut Parser) -> Result<AST, ParseError> {
+fn application(parser: &mut Parser) -> Result<Ast, ParseError> {
     let mut left = _as(parser)?;
 
     loop {
@@ -863,7 +786,7 @@ fn application(parser: &mut Parser) -> Result<AST, ParseError> {
             Err(_) => break Ok(left),
         };
 
-        left = AST::Application(
+        left = Ast::Application(
             Span {
                 start: left.get_span().start,
                 end: right.get_span().end,
@@ -874,177 +797,9 @@ fn application(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 }
 
-// prefix(&mut Parser) -> Result<AST, ParseError>
-// Gets the next prefix expression.
-fn prefix(parser: &mut Parser) -> Result<AST, ParseError> {
-    // Set up
-    let (token, span) = match parser.peek() {
-        Some(v) => v,
-        None => return ParseError::empty(),
-    };
-
-    // Unary minus
-    if let Token::Sub = token {
-        parser.next();
-
-        // Get value
-        let value = call_func_fatal!(application, parser, "Expected value after prefix operator");
-
-        Ok(AST::Prefix(
-            Span {
-                start: span.start,
-                end: value.get_span().end,
-            },
-            String::from("-"),
-            Box::new(value),
-        ))
-
-    // Span
-    } else if let Token::Mul = token {
-        parser.next();
-
-        // Get value
-        let value = call_func_fatal!(application, parser, "Expected value after prefix operator");
-
-        Ok(AST::Prefix(
-            Span {
-                start: span.start,
-                end: value.get_span().end,
-            },
-            String::from("*"),
-            Box::new(value),
-        ))
-
-    // Default to regular value
-    } else {
-        application(parser)
-    }
-}
-
-// muldivmod(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next multiplication/division/modulus expression.
-fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, prefix, Token::Mul, Token::DivMod)
-}
-
-// addsub(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next addition/subtraction expression.
-fn addsub(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, muldivmod, Token::Add, Token::Sub)
-}
-
-// bitshift(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next bitshift expression.
-fn bitshift(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, addsub, Token::BitShift, Token::Unreachable)
-}
-
-// compare(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next comparison expression.
-fn compare(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, bitshift, Token::Compare, Token::Unreachable)
-}
-
-// and(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next bitwise and expression.
-fn and(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, compare, Token::Ampersand, Token::Unreachable)
-}
-
-// or(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next bitwise or expression.
-fn or(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, and, Token::Bar, Token::Unreachable)
-}
-
-// xor(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next bitwise xor expression.
-fn xor(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, or, Token::Caret, Token::Unreachable)
-}
-
-// bool_and(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next logical and expression.
-fn bool_and(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, xor, Token::And, Token::Or)
-}
-
-// bool_or(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next logical or expression.
-fn bool_or(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, bool_and, Token::Or, Token::Unreachable)
-}
-
-// bool_xor(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next logical xor expression.
-fn bool_xor(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixl_op!(parser, bool_or, Token::Xor, Token::Unreachable)
-}
-
-// if_expr(&mut Parser) -> Result<AST, ParseError>
-// Parses an if expression.
-fn if_expr(parser: &mut Parser) -> Result<AST, ParseError> {
-    // Get if keyword
-    if let Some((Token::If, span)) = parser.peek() {
-        let state = parser.save_state();
-        parser.next();
-        newline(parser);
-
-        // Get condition
-        let cond = call_func_fatal!(expression, parser, "Expected condition after if");
-
-        // Get then keyword
-        newline(parser);
-        let slice = parser.slice();
-        consume_nosave!(
-            parser,
-            Then,
-            state,
-            true,
-            "Expected `then`, got `{}`",
-            slice
-        );
-
-        // Get body
-        newline(parser);
-        let then = call_func_fatal!(expression, parser, "Expected body after then");
-
-        // Get else keyword
-        newline(parser);
-        let slice = parser.slice();
-        consume_nosave!(
-            parser,
-            Else,
-            state,
-            true,
-            "Expected `else`, got `{}`",
-            slice
-        );
-
-        // Get else clause
-        newline(parser);
-        let elsy = call_func_fatal!(apply_op, parser, "Expected body after else");
-
-        // Return success
-        Ok(AST::If(
-            Span {
-                start: span.start,
-                end: elsy.get_span().end,
-            },
-            Box::new(cond),
-            Box::new(then),
-            Box::new(elsy),
-        ))
-
-    // Not an if expression
-    } else {
-        ParseError::empty()
-    }
-}
-
-// list(&mut Parser) -> Result<AST, ParseError>
+// list(&mut Parser) -> Result<Ast, ParseError>
 // Parses a list.
-fn list(parser: &mut Parser) -> Result<AST, ParseError> {
+fn list(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let (_, start) = consume_save!(parser, LBrack, state, false, "");
     let mut list = vec![];
@@ -1074,10 +829,10 @@ fn list(parser: &mut Parser) -> Result<AST, ParseError> {
         RBrack,
         state,
         true,
-        "Expected `[` after end of list"
+        "Expected `]` after end of list"
     );
 
-    Ok(AST::List(
+    Ok(Ast::List(
         Span {
             start: start.start,
             end: end.end,
@@ -1086,12 +841,12 @@ fn list(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// lambda(&mut Parser) -> Result<AST, ParseError>
+// lambda(&mut Parser) -> Result<Ast, ParseError>
 // Parses a lambda function.
-fn lambda(parser: &mut Parser) -> Result<AST, ParseError> {
+fn lambda(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let mut args = vec![];
-    let (_, span) = consume_save!(parser, Lambda, state, false, "");
+    let (_, span) = consume_save!(parser, Backslash, state, false, "");
 
     // Get arguments
     loop {
@@ -1129,13 +884,13 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError> {
 
     // Get the assign operator
     let slice = parser.slice();
-    consume_nosave!(parser, Assign, state, true, "Expected `=`, got `{}`", slice);
+    consume_nosave!(parser, Dot, state, true, "Expected `.`, got `{}`", slice);
 
     // Get the value
     newline(parser);
     let body = call_func_fatal!(apply_op, parser, "Expected function body after `=`");
 
-    Ok(AST::Lambda(
+    Ok(Ast::Lambda(
         Span {
             start: span.start,
             end: body.get_span().end,
@@ -1145,9 +900,9 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// matchy(&mut Parser) -> Result<AST, ParseError>
+// matchy(&mut Parser) -> Result<Ast, ParseError>
 // Parses a match expression.
-fn matchy(parser: &mut Parser) -> Result<AST, ParseError> {
+fn matchy(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let (_, span) = consume_save!(parser, Match, state, false, "");
 
@@ -1179,7 +934,7 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError> {
         });
     }
 
-    Ok(AST::Match(
+    Ok(Ast::Match(
         Span {
             start: span.start,
             end: arms.last().unwrap().1.get_span().end,
@@ -1189,12 +944,10 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// expression_values(&mut Parser) -> Result<AST, ParseError>
+// expression_values(&mut Parser) -> Result<Ast, ParseError>
 // Parses an expression.
-fn expression_values(parser: &mut Parser) -> Result<AST, ParseError> {
-    if let Ok(iffy) = call_optional!(if_expr, parser) {
-        Ok(iffy)
-    } else if let Ok(withy) = call_optional!(with, parser) {
+fn expression_values(parser: &mut Parser) -> Result<Ast, ParseError> {
+    if let Ok(withy) = call_optional!(with, parser) {
         Ok(withy)
     } else if let Ok(lambda) = call_optional!(lambda, parser) {
         Ok(lambda)
@@ -1203,66 +956,33 @@ fn expression_values(parser: &mut Parser) -> Result<AST, ParseError> {
     } else if let Ok(matchy) = call_optional!(matchy, parser) {
         Ok(matchy)
     } else {
-        bool_xor(parser)
+        application(parser)
     }
 }
 
-// apply_op(&mut Parser) -> Result<AST::Infix, ParseError>
+// apply_op(&mut Parser) -> Result<Ast::Infix, ParseError>
 // Gets the next infix application.
-fn apply_op(parser: &mut Parser) -> Result<AST, ParseError> {
+fn apply_op(parser: &mut Parser) -> Result<Ast, ParseError> {
     infixr_op!(parser, expression_values, Token::Dollar, Token::Unreachable)
 }
 
-// walrus(&mut Parser) -> Result<AST, ParseError>
-// Parses a walrus operator.
-fn walrus(parser: &mut Parser) -> Result<AST, ParseError> {
-    let state = parser.save_state();
-    if let Some((Token::Symbol, s)) = parser.peek() {
-        let name = parser.slice();
-        parser.next();
-        consume_nosave!(parser, Walrus, state, false, "");
-        let v = call_func_fatal!(apply_op, parser, "Expected expression after `:=`");
-
-        Ok(AST::Walrus(
-            Span {
-                start: s.start,
-                end: v.get_span().end,
-            },
-            name,
-            Box::new(v),
-        ))
-    } else {
-        ParseError::empty()
-    }
-}
-
-// walrus_wrapper(&mut Parser) -> Result<AST, ParseError>
-// Parses either a walrus operator or an expression.
-fn walrus_wrapper(parser: &mut Parser) -> Result<AST, ParseError> {
-    if let Ok(v) = call_optional!(walrus, parser) {
-        Ok(v)
-    } else {
-        apply_op(parser)
-    }
-}
-
-// expression(&mut Parser) -> Result<AST, ParseError>
+// expression(&mut Parser) -> Result<Ast, ParseError>
 // Parses expressions chained by ;.
-fn expression(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixr_op!(parser, walrus_wrapper, Token::Semicolon, Token::Unreachable)
+fn expression(parser: &mut Parser) -> Result<Ast, ParseError> {
+    infixr_op!(parser, apply_op, Token::Semicolon, Token::Unreachable)
 }
 
-// annotation(&mut Parser) -> Result<AST, ParseError>
+// annotation(&mut Parser) -> Result<Ast, ParseError>
 // Parses an annotation.
-fn annotation(parser: &mut Parser) -> Result<AST, ParseError> {
+fn annotation(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let (annotation, span) = consume_save!(parser, Annotation, state, false, "");
-    Ok(AST::Annotation(span, annotation))
+    Ok(Ast::Annotation(span, annotation))
 }
 
-// assignment_raw(&mut Parser) -> Result<AST, ParseError>
+// assignment_raw(&mut Parser) -> Result<Ast, ParseError>
 // Parses an assignment without any types or arguments.
-fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError> {
+fn assignment_raw(parser: &mut Parser) -> Result<Ast, ParseError> {
     // Get the variable name
     let state = parser.save_state();
     let (name, span) = consume_save!(parser, Symbol, state, false, "");
@@ -1274,7 +994,7 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError> {
     newline(parser);
     let value = call_func_fatal!(expression, parser, "Expected value after `=`");
 
-    Ok(AST::Assign(
+    Ok(Ast::Assign(
         Span {
             start: span.start,
             end: value.get_span().end,
@@ -1284,9 +1004,9 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// type_symbol(&mut Parser) -> Result<AST, ParseError>
+// type_symbol(&mut Parser) -> Result<Ast, ParseError>
 // Parses a type symbol or parenthesised type.
-fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError> {
+fn type_symbol(parser: &mut Parser) -> Result<Ast, ParseError> {
     let (token, span) = match parser.peek() {
         Some(v) => v,
         None => return ParseError::empty(),
@@ -1294,41 +1014,15 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError> {
 
     // Symbols
     if let Token::Symbol = token {
-        let value = AST::Symbol(span, parser.slice());
+        let value = Ast::Symbol(span, parser.slice());
         parser.next();
         Ok(value)
 
-    // Enums
-    } else if let Token::Enum = token {
-        let state = parser.save_state();
+    // Generics
+    } else if let Token::Generic(v) = token {
+        let value = Ast::Generic(span, v.to_owned());
         parser.next();
-        let (value, span2) =
-            consume_save!(parser, Symbol, state, true, "Expected symbol after `enum`");
-
-        Ok(AST::Prefix(
-            Span {
-                start: span.start,
-                end: span2.end,
-            },
-            String::from("enum"),
-            Box::new(AST::Symbol(span2, value)),
-        ))
-
-    // Pointer types
-    } else if let Token::Pointer = token {
-        let state = parser.save_state();
-        parser.next();
-        let (value, span2) =
-            consume_save!(parser, Symbol, state, true, "Expected symbol after `ptr`");
-
-        Ok(AST::Prefix(
-            Span {
-                start: span.start,
-                end: span2.end,
-            },
-            String::from("ptr"),
-            Box::new(AST::Symbol(span2, value)),
-        ))
+        Ok(value)
 
     // Parenthesised types
     } else if let Token::LParen = token {
@@ -1356,15 +1050,15 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 }
 
-// type_tagged(&mut Parser) -> Result<AST< ParseError>
+// type_tagged(&mut Parser) -> Result<Ast< ParseError>
 // Parses a tagged type (a: T).
-fn type_tagged(parser: &mut Parser) -> Result<AST, ParseError> {
+fn type_tagged(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let s = call_func!(symbol, parser, state);
     consume_nosave!(parser, Colon, state, false, "");
     let t = call_func_fatal!(type_symbol, parser, "Expected type after `:`");
 
-    Ok(AST::Infix(
+    Ok(Ast::Infix(
         Span {
             start: s.get_span().start,
             end: t.get_span().end,
@@ -1375,9 +1069,9 @@ fn type_tagged(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// type_field(&mut Parser) -> Result<AST, ParseError>
+// type_field(&mut Parser) -> Result<Ast, ParseError>
 // Parses a field of a union or product type.
-fn type_field(parser: &mut Parser) -> Result<AST, ParseError> {
+fn type_field(parser: &mut Parser) -> Result<Ast, ParseError> {
     if let Ok(v) = call_optional!(type_tagged, parser) {
         Ok(v)
     } else {
@@ -1385,21 +1079,21 @@ fn type_field(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 }
 
-// type_union(&mut Parser) -> Result<AST, ParseError>
+// type_union(&mut Parser) -> Result<Ast, ParseError>
 // Parses a union type declaration.
-fn type_union(parser: &mut Parser) -> Result<AST, ParseError> {
+fn type_union(parser: &mut Parser) -> Result<Ast, ParseError> {
     infixl_op!(parser, type_field, Token::Bar, Token::Unreachable)
 }
 
-// type_expr(&mut Parser) -> Result<AST, ParseError>
+// type_expr(&mut Parser) -> Result<Ast, ParseError>
 // Parses a type.
-fn type_expr(parser: &mut Parser) -> Result<AST, ParseError> {
-    infixr_op!(parser, type_union, Token::RightArrow, Token::Unreachable)
+fn type_expr(parser: &mut Parser) -> Result<Ast, ParseError> {
+    infixr_op!(parser, type_union, Token::RightArrow, Token::PlusArrow)
 }
 
-// type_assignment(&mut Parser) -> Result<AST, ParseError>
+// type_assignment(&mut Parser) -> Result<Ast, ParseError>
 // Parses an assignment of a type.
-fn type_assignment(parser: &mut Parser) -> Result<AST, ParseError> {
+fn type_assignment(parser: &mut Parser) -> Result<Ast, ParseError> {
     // Get type keyword
     let state = parser.save_state();
     let (_, span) = consume_save!(parser, Type, state, false, "");
@@ -1415,7 +1109,7 @@ fn type_assignment(parser: &mut Parser) -> Result<AST, ParseError> {
     let _type = call_func_fatal!(type_expr, parser, "Expected type after `=`");
 
     // Successfully return
-    Ok(AST::AssignType(
+    Ok(Ast::AssignType(
         Span {
             start: span.start,
             end: _type.get_span().end,
@@ -1425,9 +1119,9 @@ fn type_assignment(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// declaration(&mut Parser) -> Result<(Span, String, AST), ParseError>
+// declaration(&mut Parser) -> Result<(Span, String, Ast), ParseError>
 // Parses a declaration.
-fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError> {
+fn declaration(parser: &mut Parser) -> Result<(Span, String, Ast), ParseError> {
     // Get the variable name
     let state = parser.save_state();
     let (name, span) = consume_save!(parser, Symbol, state, false, "");
@@ -1441,34 +1135,9 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError> {
     Ok((span, name, type_val))
 }
 
-// assignment_typed(&mut Parser) -> Result<AST, ParseError>
-// Parses an assignment annotated with a type.
-fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError> {
-    let state = parser.save_state();
-    let (span, name, type_val) = declaration(parser)?;
-
-    // Get the assign operator
-    let slice = parser.slice();
-    consume_nosave!(parser, Assign, state, true, "Expected `=`, got `{}`", slice);
-
-    // Get the value
-    newline(parser);
-    let value = call_func_fatal!(expression, parser, "Expected value after `=`");
-
-    Ok(AST::AssignTyped(
-        Span {
-            start: span.start,
-            end: value.get_span().end,
-        },
-        name,
-        Box::new(type_val),
-        Box::new(value),
-    ))
-}
-
-// assignment_func(&mut Parser) -> Result<AST, ParseError>
+// assignment_func(&mut Parser) -> Result<Ast, ParseError>
 // Parses an assignment for a function.
-fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError> {
+fn assignment_func(parser: &mut Parser) -> Result<Ast, ParseError> {
     // Get the variable name
     let state = parser.save_state();
     let mut args = vec![];
@@ -1512,7 +1181,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError> {
     newline(parser);
     let value = call_func_fatal!(expression, parser, "Expected function body after `=`");
 
-    Ok(AST::AssignFunction(
+    Ok(Ast::AssignFunction(
         Span {
             start: span.start,
             end: value.get_span().end,
@@ -1523,25 +1192,23 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// assignment(&mut Parser) -> Result<AST, ParseError>
+// assignment(&mut Parser) -> Result<Ast, ParseError>
 // Parses an assignment.
-fn assignment(parser: &mut Parser) -> Result<AST, ParseError> {
+fn assignment(parser: &mut Parser) -> Result<Ast, ParseError> {
     if let Ok(typed) = call_optional!(assignment_raw, parser) {
         Ok(typed)
-    } else if let Ok(func) = call_optional!(assignment_typed, parser) {
-        Ok(func)
     } else {
         assignment_func(parser)
     }
 }
 
-// with(&mut Parser) -> Result<AST, ParseError>
+// with(&mut Parser) -> Result<Ast, ParseError>
 // Parses a with expression (scoping).
-fn with(parser: &mut Parser) -> Result<AST, ParseError> {
+fn with(parser: &mut Parser) -> Result<Ast, ParseError> {
     // Get the with keyword
     let state = parser.save_state();
     let span = parser.span();
-    consume_nosave!(parser, With, state, false, "");
+    consume_nosave!(parser, Let, state, false, "");
 
     // Get assignments
     let mut assigns = vec![];
@@ -1568,7 +1235,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError> {
     newline(parser);
     let body = call_func!(expression, parser, state);
 
-    Ok(AST::With(
+    Ok(Ast::With(
         Span {
             start: span.start,
             end: body.get_span().end,
@@ -1578,9 +1245,10 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// import(&mut Parser) -> Result<AST, ParseError>
+/*
+// import(&mut Parser) -> Result<Ast, ParseError>
 // Parses an import statement.
-fn import(parser: &mut Parser) -> Result<AST, ParseError> {
+fn import(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let (_, span) = consume_save!(parser, Import, state, false, "");
     let start = span.start;
@@ -1602,7 +1270,7 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError> {
             alias = a
         }
 
-        Ok(AST::QualifiedImport(
+        Ok(Ast::QualifiedImport(
             Span { start, end },
             Box::new(name),
             alias,
@@ -1669,13 +1337,13 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError> {
         }
 
         parser.next();
-        Ok(AST::Import(Span { start, end }, Box::new(name), imports))
+        Ok(Ast::Import(Span { start, end }, Box::new(name), imports))
     }
 }
 
-// header(&mut Parser) -> Result<AST, ParseError>
+// header(&mut Parser) -> Result<Ast, ParseError>
 // Parses a header entry.
-fn header(parser: &mut Parser) -> Result<AST, ParseError> {
+fn header(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     let (_, span) = consume_save!(parser, Module, state, false, "");
     let start = span.start;
@@ -1731,7 +1399,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError> {
                 Token::Type => {
                     parser.next();
                     if let Some((Token::Symbol, _)) = parser.peek() {
-                        exports.push((parser.span(), parser.slice(), AST::Empty));
+                        exports.push((parser.span(), parser.slice(), Ast::Empty));
                         parser.next();
                     } else {
                         return Err(ParseError {
@@ -1765,7 +1433,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError> {
         newline(parser);
     }
 
-    Ok(AST::Header(
+    Ok(Ast::Header(
         Span { start, end },
         Box::new(name),
         exports,
@@ -1773,9 +1441,9 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError> {
     ))
 }
 
-// externy(&mut Parser) -> Result<AST, ParseError>
+// externy(&mut Parser) -> Result<Ast, ParseError>
 // Parses an external function declaration.
-fn externy(parser: &mut Parser) -> Result<AST, ParseError> {
+fn externy(parser: &mut Parser) -> Result<Ast, ParseError> {
     let state = parser.save_state();
     consume_nosave!(parser, Extern, state, false, "");
 
@@ -1807,7 +1475,7 @@ fn externy(parser: &mut Parser) -> Result<AST, ParseError> {
     );
     let _type = call_func_fatal!(type_expr, parser, "Expected type after `:`");
 
-    Ok(AST::Extern(
+    Ok(Ast::Extern(
         Span {
             start: s.start,
             end: _type.get_span().end,
@@ -1817,18 +1485,20 @@ fn externy(parser: &mut Parser) -> Result<AST, ParseError> {
         Box::new(_type),
     ))
 }
+*/
 
-// parse(&str) -> Result<AST, ParseError>
+// parse(&str) -> Result<Ast, ParseError>
 // Parses curly code.
-pub fn parse(s: &str) -> Result<Vec<AST>, ParseError> {
+pub fn parse(s: &str) -> Result<Vec<Ast>, ParseError> {
     let mut parser = Parser::new(s);
     let mut lines = vec![];
     let p = &mut parser;
 
     newline(p);
+    /*
     if let Ok(header) = call_optional!(header, p) {
         lines.push(header);
-    }
+    }*/
 
     while p.peek().is_some() {
         // Parse one line
@@ -1836,6 +1506,25 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError> {
             lines.push(annotation);
         } else if let Ok(assign) = call_optional!(assignment, p) {
             lines.push(assign);
+        } else {
+            lines.push(match type_assignment(p) {
+                Ok(v) => v,
+                Err(e) if e.fatal => return Err(e),
+                Err(_) => {
+                    let peeked = if p.peek().is_some() {
+                        p.slice()
+                    } else {
+                        String::from("eof")
+                    };
+                    return Err(ParseError {
+                        span: p.span(),
+                        msg: format!("Unexpected `{}`", peeked),
+                        fatal: true,
+                    });
+                }
+            });
+        }
+        /*
         } else if let Ok(_type) = call_optional!(type_assignment, p) {
             lines.push(_type);
         } else {
@@ -1855,7 +1544,7 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError> {
                     });
                 }
             });
-        }
+            */
 
         // Skip newlines
         newline(p);
@@ -1864,135 +1553,3 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError> {
     Ok(lines)
 }
 
-// library_header(&mut Parser) -> Result<AST, ParseError>
-// Parses a module library header entry.
-fn library_header(parser: &mut Parser) -> Result<AST, ParseError> {
-    let state = parser.save_state();
-    let (_, span) = consume_save!(parser, Module, state, false, "");
-    let start = span.start;
-    let name = call_func_fatal!(access_member, parser, "Expected module name after `module`");
-    let mut end = name.get_span().end;
-
-    let mut exports = vec![];
-    newline(parser);
-    let mut comma = false;
-    if let Some((Token::LParen, _)) = parser.peek() {
-        parser.next();
-
-        loop {
-            newline(parser);
-            if comma {
-                match parser.peek() {
-                    Some((Token::Comma, _)) => {
-                        parser.next();
-                    }
-                    Some((Token::RParen, _)) => break,
-                    _ => (),
-                }
-            } else {
-                comma = true;
-            }
-
-            newline(parser);
-            if parser.peek().is_none() {
-                let span = parser.span();
-                parser.return_state(state);
-                return Err(ParseError {
-                    span,
-                    msg: String::from(
-                        "Expected exported item or right parenthesis, got end of file",
-                    ),
-                    fatal: true,
-                });
-            }
-
-            let (token, span) = parser.peek().unwrap();
-            end = span.end;
-
-            match token {
-                Token::RParen => break,
-                Token::Symbol => exports.push({
-                    // Get the variable name
-                    let state = parser.save_state();
-                    let (name, span) = consume_save!(parser, Symbol, state, false, "");
-
-                    // Get the colon
-                    consume_nosave!(parser, Colon, state, false, "");
-
-                    // Get an int
-                    let arity = if let Some((Token::Int(v), _)) = parser.peek() {
-                        *v
-                    } else {
-                        return Err(ParseError {
-                            span: parser.span(),
-                            msg: String::from("Expected int"),
-                            fatal: true,
-                        });
-                    };
-
-                    parser.next();
-
-                    // Get a boolean
-                    let impure = if let Some((Token::True, _)) = parser.peek() {
-                        true
-                    } else if let Some((Token::False, _)) = parser.peek() {
-                        false
-                    } else {
-                        return Err(ParseError {
-                            span: parser.span(),
-                            msg: String::from("Expected boolean"),
-                            fatal: true,
-                        });
-                    };
-
-                    // Get the colon
-                    parser.next();
-                    consume_nosave!(parser, Colon, state, true, "Expected colon after arity");
-
-                    // Get the type
-                    let type_val = call_func_fatal!(type_expr, parser, "Expected type after `:`");
-                    (span, name, arity as usize, impure, type_val)
-                }),
-
-                _ => {
-                    let span = parser.span();
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span,
-                        msg: String::from("Expected exported item or right parenthesis"),
-                        fatal: true,
-                    });
-                }
-            }
-        }
-
-        parser.next();
-    }
-
-    Ok(AST::LibHeader(Span { start, end }, Box::new(name), exports))
-}
-
-// parse_library(&str) -> Result<Vec<AST>, ParseError>
-// Parses a library header.
-pub fn parse_library(s: &str) -> Result<Vec<AST>, ParseError> {
-    let mut parser = Parser::new(s);
-    let mut lines = vec![];
-    let p = &mut parser;
-
-    newline(p);
-
-    while p.peek().is_some() {
-        lines.push(library_header(p)?);
-        newline(p);
-    }
-
-    if p.peek().is_some() {
-        Err(ParseError {
-            span: p.span(),
-            msg: String::from("Expected eof"),
-            fatal: true,
-        })
-    } else {
-        Ok(lines)
-    }
-}

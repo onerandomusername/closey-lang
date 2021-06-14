@@ -2,7 +2,7 @@ use logos::Span;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use super::parser::AST;
+use super::parser::Ast;
 use super::scopes::Scope;
 use super::types;
 use super::types::{arc, Type, TypeRc};
@@ -330,10 +330,10 @@ impl IRModule {
     }
 }
 
-// convert_node(AST, &str, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
+// convert_node(Ast, &str, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
 // Converts an ast node into an sexpression.
 fn convert_node(
-    ast: AST,
+    ast: Ast,
     filename: &str,
     funcs: &mut HashMap<String, IRFunction>,
     global: bool,
@@ -341,10 +341,10 @@ fn convert_node(
     types: &mut HashMap<String, TypeRc>,
 ) -> SExpr {
     match ast {
-        AST::Empty => unreachable!("never empty"),
+        Ast::Empty => unreachable!("never empty"),
 
         // Int
-        AST::Int(span, n) => SExpr::Int(
+        Ast::Int(span, n) => SExpr::Int(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -359,7 +359,7 @@ fn convert_node(
         ),
 
         // Float
-        AST::Float(span, n) => SExpr::Float(
+        Ast::Float(span, n) => SExpr::Float(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -374,7 +374,7 @@ fn convert_node(
         ),
 
         // Word
-        AST::Word(span, n) => SExpr::Word(
+        Ast::Word(span, n) => SExpr::Word(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -389,7 +389,7 @@ fn convert_node(
         ),
 
         // Char
-        AST::Char(span, c) => SExpr::Char(
+        Ast::Char(span, c) => SExpr::Char(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -403,31 +403,7 @@ fn convert_node(
             c,
         ),
 
-        // True
-        AST::True(span) => SExpr::True(SExprMetadata {
-            loc: Location::new(span, filename),
-            loc2: Location::empty(),
-            origin: String::with_capacity(0),
-            _type: arc::new(Type::Bool),
-            arity: 0,
-            saved_argc: None,
-            tailrec: false,
-            impure: false,
-        }),
-
-        // False
-        AST::False(span) => SExpr::False(SExprMetadata {
-            loc: Location::new(span, filename),
-            loc2: Location::empty(),
-            origin: String::with_capacity(0),
-            _type: arc::new(Type::Bool),
-            arity: 0,
-            saved_argc: None,
-            tailrec: false,
-            impure: false,
-        }),
-
-        AST::List(span, list) => SExpr::List(
+        Ast::List(span, list) => SExpr::List(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -444,7 +420,7 @@ fn convert_node(
         ),
 
         // Symbol
-        AST::Symbol(span, s) => SExpr::Symbol(
+        Ast::Symbol(span, s) => SExpr::Symbol(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -459,7 +435,7 @@ fn convert_node(
         ),
 
         // Enum
-        AST::Enum(span, e) => SExpr::Enum(
+        Ast::Enum(span, e) => SExpr::Enum(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -473,19 +449,20 @@ fn convert_node(
             e,
         ),
 
-        AST::Annotation(_, _)
-        | AST::Import(_, _, _)
-        | AST::QualifiedImport(_, _, _)
-        | AST::Header(_, _, _, _)
-        | AST::LibHeader(_, _, _)
-        | AST::Extern(_, _, _, _) => {
+        Ast::Generic(_, _)
+        | Ast::Annotation(_, _)
+        | Ast::Import(_, _, _)
+        | Ast::QualifiedImport(_, _, _)
+        | Ast::Header(_, _, _, _)
+        | Ast::LibHeader(_, _, _)
+        | Ast::Extern(_, _, _, _) => {
             unreachable!(
                 "annotations, imports, headers, and external declarations are already handled!"
             );
         }
 
         // String
-        AST::String(span, s) => {
+        Ast::String(span, s) => {
             let loc = Location::new(span, filename);
             let mut cons = SExpr::Application(
                 SExprMetadata {
@@ -615,7 +592,7 @@ fn convert_node(
         }
 
         // Prefix
-        AST::Prefix(span, op, v) => {
+        Ast::Prefix(span, op, v) => {
             let op = match op.as_str() {
                 "-" => PrefixOp::Neg,
                 "*" => PrefixOp::Span,
@@ -639,7 +616,7 @@ fn convert_node(
         }
 
         // Infix
-        AST::Infix(span, op, l, r) => {
+        Ast::Infix(span, op, l, r) => {
             // Deal with boolean operators
             if op == "and" {
                 SExpr::And(
@@ -675,20 +652,20 @@ fn convert_node(
             // Deal with accessing members
             } else if op == "::" {
                 let mut accesses = vec![];
-                if let AST::Symbol(_, s) = *r {
+                if let Ast::Symbol(_, s) = *r {
                     accesses.push(s);
                 }
 
                 let mut l = *l;
-                while let AST::Infix(_, _, l_, r) = l {
-                    if let AST::Symbol(_, s) = *r {
+                while let Ast::Infix(_, _, l_, r) = l {
+                    if let Ast::Symbol(_, s) = *r {
                         accesses.insert(0, s);
                     }
 
                     l = *l_;
                 }
 
-                if let AST::Symbol(_, s) = l {
+                if let Ast::Symbol(_, s) = l {
                     accesses.insert(0, s);
                 }
 
@@ -777,7 +754,7 @@ fn convert_node(
             }
         }
 
-        AST::As(span, value, _type) => SExpr::As(
+        Ast::As(span, value, _type) => SExpr::As(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::new(_type.get_span(), filename),
@@ -793,31 +770,8 @@ fn convert_node(
             )),
         ),
 
-        // If expression
-        AST::If(span, cond, then, elsy) => SExpr::If(
-            SExprMetadata {
-                loc: Location::new(span, filename),
-                loc2: Location::empty(),
-                origin: String::with_capacity(0),
-                _type: arc::new(Type::Error),
-                arity: 0,
-                saved_argc: None,
-                tailrec: false,
-                impure: false,
-            },
-            Box::new(convert_node(
-                *cond, filename, funcs, global, seen_funcs, types,
-            )),
-            Box::new(convert_node(
-                *then, filename, funcs, global, seen_funcs, types,
-            )),
-            Box::new(convert_node(
-                *elsy, filename, funcs, global, seen_funcs, types,
-            )),
-        ),
-
         // Application
-        AST::Application(span, l, r) => SExpr::Application(
+        Ast::Application(span, l, r) => SExpr::Application(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -833,7 +787,7 @@ fn convert_node(
         ),
 
         // Assignment
-        AST::Assign(span, name, val) => {
+        Ast::Assign(span, name, val) => {
             let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
             if global && name != "_" {
                 let func_name = if seen_funcs.contains_key(&name) {
@@ -905,7 +859,7 @@ fn convert_node(
         }
 
         // Assignment with types
-        AST::AssignTyped(span, name, _type, val) => {
+        Ast::AssignTyped(span, name, _type, val) => {
             let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
             if global && name != "_" {
                 let func_name = if seen_funcs.contains_key(&name) {
@@ -978,7 +932,7 @@ fn convert_node(
             }
         }
 
-        AST::AssignType(span, name, _type) => {
+        Ast::AssignType(span, name, _type) => {
             let span2 = _type.get_span();
             let _type = arc::new(types::convert_ast_to_type(*_type, filename));
             types.insert(name.clone(), _type.clone());
@@ -998,7 +952,7 @@ fn convert_node(
         }
 
         // Assigning functions
-        AST::AssignFunction(span, name, args, val) => {
+        Ast::AssignFunction(span, name, args, val) => {
             // Get function id
             let func_name = if seen_funcs.contains_key(&name) {
                 let seen = seen_funcs.get_mut(&name).unwrap();
@@ -1076,7 +1030,7 @@ fn convert_node(
             )
         }
 
-        AST::Lambda(span, args, val) => {
+        Ast::Lambda(span, args, val) => {
             // Get function id
             let func_name = {
                 let seen = seen_funcs.get_mut("").unwrap();
@@ -1134,7 +1088,7 @@ fn convert_node(
         }
 
         // With expressions
-        AST::With(span, a, v) => SExpr::With(
+        Ast::With(span, a, v) => SExpr::With(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -1151,7 +1105,7 @@ fn convert_node(
             Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)),
         ),
 
-        AST::Walrus(span, a, v) => SExpr::Walrus(
+        Ast::Walrus(span, a, v) => SExpr::Walrus(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -1166,7 +1120,7 @@ fn convert_node(
             Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)),
         ),
 
-        AST::Match(span, v, a) => SExpr::Match(
+        Ast::Match(span, v, a) => SExpr::Match(
             SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
@@ -1192,11 +1146,11 @@ fn convert_node(
     }
 }
 
-// extract_types_to_ir(&Vec<AST>, &mut IRModule) -> ()
+// extract_types_to_ir(&Vec<Ast>, &mut IRModule) -> ()
 // Extracts types and inserts them into the IR's list of types.
-fn extract_types_to_ir(asts: &[AST], module: &mut IRModule) {
+fn extract_types_to_ir(asts: &[Ast], module: &mut IRModule) {
     for ast in asts {
-        if let AST::AssignType(_, v, _) = ast {
+        if let Ast::AssignType(_, v, _) = ast {
             module.types.insert(v.clone(), arc::new(Type::Unknown));
         }
     }
@@ -1209,12 +1163,12 @@ enum Purity {
     Default,
 }
 
-// convert_ast_to_ir(Vec<AST>) -> IR
+// convert_ast_to_ir(Vec<Ast>) -> IR
 // Converts a list of asts into ir.
 pub fn convert_ast_to_ir(
     filename: &str,
     contents: &str,
-    asts: Vec<AST>,
+    asts: Vec<Ast>,
     ir: &mut IR,
 ) -> Result<(), Vec<IRError>> {
     // Set up
@@ -1230,18 +1184,18 @@ pub fn convert_ast_to_ir(
     // Iterate over every ast node
     for ast in asts {
         // Deal with the header
-        if let AST::Header(_, name, exports, imports) = ast {
+        if let Ast::Header(_, name, exports, imports) = ast {
             // Get module name
             let mut full_name = vec![];
             let mut top = *name;
-            while let AST::Infix(_, _, l, r) = top {
-                if let AST::Symbol(_, v) = *r {
+            while let Ast::Infix(_, _, l, r) = top {
+                if let Ast::Symbol(_, v) = *r {
                     full_name.push(v);
                 }
 
                 top = *l;
             }
-            if let AST::Symbol(_, v) = top {
+            if let Ast::Symbol(_, v) = top {
                 full_name.push(v);
             }
             full_name.reverse();
@@ -1250,7 +1204,7 @@ pub fn convert_ast_to_ir(
             // Deal with exports
             for export in exports {
                 // Check exported variable type
-                if let AST::Empty = export.2 {
+                if let Ast::Empty = export.2 {
                     unimplemented!("nya :(");
                 } else {
                     let _type = types::convert_ast_to_type(export.2, filename);
@@ -1279,18 +1233,18 @@ pub fn convert_ast_to_ir(
             for import in imports {
                 let imp_mod;
                 let alias;
-                if let AST::QualifiedImport(s, m, a) = import {
+                if let Ast::QualifiedImport(s, m, a) = import {
                     let mut name = vec![];
                     let mut m = m;
-                    while let AST::Infix(_, _, l, r) = *m {
-                        if let AST::Symbol(_, v) = *r {
+                    while let Ast::Infix(_, _, l, r) = *m {
+                        if let Ast::Symbol(_, v) = *r {
                             name.push(v);
                         } else {
                             unreachable!("always a symbol");
                         }
                         m = l;
                     }
-                    if let AST::Symbol(_, v) = *m {
+                    if let Ast::Symbol(_, v) = *m {
                         name.push(v);
                     }
                     name.reverse();
@@ -1307,18 +1261,18 @@ pub fn convert_ast_to_ir(
                         qualified: true,
                         imports: HashMap::with_capacity(0),
                     };
-                } else if let AST::Import(s, m, imports) = import {
+                } else if let Ast::Import(s, m, imports) = import {
                     let mut name = vec![];
                     let mut m = m;
-                    while let AST::Infix(_, _, l, r) = *m {
-                        if let AST::Symbol(_, v) = *r {
+                    while let Ast::Infix(_, _, l, r) = *m {
+                        if let Ast::Symbol(_, v) = *r {
                             name.push(v);
                         } else {
                             unreachable!("always a symbol");
                         }
                         m = l;
                     }
-                    if let AST::Symbol(_, v) = *m {
+                    if let Ast::Symbol(_, v) = *m {
                         name.push(v);
                     }
                     name.reverse();
@@ -1351,7 +1305,7 @@ pub fn convert_ast_to_ir(
                     }
                 }
             }
-        } else if let AST::Annotation(span, a) = ast {
+        } else if let Ast::Annotation(span, a) = ast {
             // Purity tags
             if a == "@pure" {
                 purity = Purity::Pure;
@@ -1363,7 +1317,7 @@ pub fn convert_ast_to_ir(
                     a,
                 ));
             }
-        } else if let AST::Extern(span, c, n, t) = ast {
+        } else if let Ast::Extern(span, c, n, t) = ast {
             let ts = t.get_span().clone();
             let t = types::convert_ast_to_type(*t, &module.filename);
 
@@ -1461,7 +1415,7 @@ pub fn convert_ast_to_ir(
 
 pub fn convert_library_header(
     filename: &str,
-    asts: Vec<AST>,
+    asts: Vec<Ast>,
     ir: &mut IR,
 ) -> Result<(), Vec<IRError>> {
     let mut errors = vec![];
@@ -1477,21 +1431,21 @@ pub fn convert_library_header(
     }
 }
 
-pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
+pub fn convert_module(filename: &str, ast: Ast, ir: &mut IR) -> Vec<IRError> {
     let mut errors = vec![];
 
-    if let AST::LibHeader(_, name, exports) = ast {
+    if let Ast::LibHeader(_, name, exports) = ast {
         // Get module name
         let mut full_name = vec![];
         let mut top = *name;
-        while let AST::Infix(_, _, l, r) = top {
-            if let AST::Symbol(_, v) = *r {
+        while let Ast::Infix(_, _, l, r) = top {
+            if let Ast::Symbol(_, v) = *r {
                 full_name.push(v);
             }
 
             top = *l;
         }
-        if let AST::Symbol(_, v) = top {
+        if let Ast::Symbol(_, v) = top {
             full_name.push(v);
         }
         full_name.reverse();
@@ -1503,7 +1457,7 @@ pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
         // Deal with exports
         for export in exports {
             // Check exported variable type
-            if let AST::Empty = export.4 {
+            if let Ast::Empty = export.4 {
                 unimplemented!("nya :(");
             } else {
                 let _type = arc::new(types::convert_ast_to_type(export.4, filename));
