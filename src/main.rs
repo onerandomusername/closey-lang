@@ -1,6 +1,7 @@
 use std::env;
 use std::process::exit;
 
+use closeyc::frontend::ir::{self, Ir};
 use closeyc::frontend::parser;
 
 pub static DEBUG: bool = false;
@@ -27,6 +28,16 @@ fn main() {
                         };
 
                         println!("{:?}", ast);
+                        let mut root = Ir::default();
+                        match ir::convert_ast_to_ir("arg", &s, ast, &mut root) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                eprintln!("Error creating ir!");
+                                exit(1);
+                            }
+                        };
+
+                        println!("{:#?}", root);
                     }
 
                     None => {
@@ -34,7 +45,6 @@ fn main() {
                         exit(1);
                     }
                 }
-
             }
 
             "help" => {

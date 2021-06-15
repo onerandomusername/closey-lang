@@ -46,9 +46,10 @@ pub enum Type {
     Word,
     Char,
     Symbol(String),
+    Generic(String),
     Func(TypeRc, TypeRc),
+    Curried(TypeRc, TypeRc),
     Union(HashSetWrapper<TypeRc>),
-    // Sum(HashMapWrapper<String, TypeRc>),
     Enum(String),
     Pointer(String),
     Tag(String, TypeRc),
@@ -90,6 +91,9 @@ impl Display for Type {
             Type::Symbol(s) => {
                 write!(f, "{}", s)?;
             }
+            Type::Generic(g) => {
+                write!(f, "'{}", g)?;
+            }
             Type::Enum(e) => {
                 write!(f, "enum {}", e)?;
             }
@@ -98,13 +102,25 @@ impl Display for Type {
             }
 
             // Function types
-            Type::Func(func, a) => {
-                if let Type::Func(_, _) = **func {
-                    write!(f, "({})", **func)?;
+            Type::Func(arg, ret) => {
+                if let Type::Func(_, _) = **arg {
+                    write!(f, "({})", **arg)?;
                 } else {
-                    write!(f, "{}", **func)?;
+                    write!(f, "{}", **arg)?;
                 }
-                write!(f, " -> {}", a)?;
+                write!(f, " -> {}", ret)?;
+            }
+
+            // Curried types
+            Type::Curried(arg, ret) => {
+                if let Type::Func(_, _) = **arg {
+                    write!(f, "({})", **arg)?;
+                } else if let Type::Curried(_, _) = **arg {
+                    write!(f, "({})", **arg)?;
+                } else {
+                    write!(f, "{}", **arg)?;
+                }
+                write!(f, " +> {}", ret)?;
             }
 
             // Union types
@@ -143,26 +159,18 @@ impl Type {
         hash.finish()
     }
 
-    // is_ffi_compatible(&self, &HashMap<String, Type>) -> bool
-    // Returns true if function is ffi compatible.
-    pub fn is_ffi_compatible(&self, types: &HashMap<String, TypeRc>) -> bool {
-        match self {
-            Type::Int => true,
-            Type::Float => true,
-            Type::Bool => true,
-            Type::Word => true,
-            Type::Char => true,
-            Type::Symbol(s) => types.get(s).unwrap().is_ffi_compatible(types),
-            Type::Func(f, a) => f.is_ffi_compatible(types) && a.is_ffi_compatible(types),
-            Type::Enum(_) => true,
-            Type::Pointer(_) => true,
-            _ => false,
-        }
-    }
+    /*
+     * (\x: 'x -> 'x . x) (\y: 'y . y)
+     *
+     *
+     *
+     * */
 
     // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
     pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, TypeRc>) -> bool {
+        false
+        /*
         let _type = self;
 
         if _type == supertype {
@@ -247,8 +255,9 @@ impl Type {
             | Type::UndeclaredTypeError(_)
             | Type::DuplicateTypeError(_, _, _)
             | Type::Unknown
-            | Type::Symbol(_) => false,
-        }
+            | Type::Symbol(_)
+            | Type::Generic(_) => false,
+        }*/
     }
 }
 
@@ -336,22 +345,9 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
             }
         }
 
-        // Enums
-        Ast::Prefix(_, op, v) if op == "enum" => {
-            if let Ast::Symbol(_, v) = *v {
-                Type::Enum(v)
-            } else {
-                unreachable!("enum always has a symbol");
-            }
-        }
-
-        // Pointer
-        Ast::Prefix(_, op, v) if op == "ptr" => {
-            if let Ast::Symbol(_, v) = *v {
-                Type::Pointer(v)
-            } else {
-                unreachable!("ptr always has a symbol");
-            }
+        // Generics
+        Ast::Generic(_, g) => {
+            Type::Generic(g)
         }
 
         // Sum types
@@ -399,6 +395,24 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
             }
         }
 
+        // Curried
+        Ast::Infix(_, op, l, r) if op == "+>" => {
+            let l = convert_ast_to_type(*l, filename);
+            let r = convert_ast_to_type(*r, filename);
+
+            if let Type::UndeclaredTypeError(s) = l {
+                Type::UndeclaredTypeError(s)
+            } else if let Type::DuplicateTypeError(a, b, c) = l {
+                Type::DuplicateTypeError(a, b, c)
+            } else if let Type::UndeclaredTypeError(s) = r {
+                Type::UndeclaredTypeError(s)
+            } else if let Type::DuplicateTypeError(a, b, c) = r {
+                Type::DuplicateTypeError(a, b, c)
+            } else {
+                Type::Curried(arc::new(l), arc::new(r))
+            }
+        }
+
         // Function types
         Ast::Infix(_, op, l, r) if op == "->" => {
             let l = convert_ast_to_type(*l, filename);
@@ -414,23 +428,6 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
                 Type::DuplicateTypeError(a, b, c)
             } else {
                 Type::Func(arc::new(l), arc::new(r))
-            }
-        }
-
-        Ast::Infix(_, op, l, r) if op == ":" => {
-            let s = r.get_span();
-            let r = convert_ast_to_type(*r, filename);
-
-            if let Type::UndeclaredTypeError(s) = r {
-                Type::UndeclaredTypeError(s)
-            } else if let Type::DuplicateTypeError(a, b, c) = r {
-                Type::DuplicateTypeError(a, b, c)
-            } else if let Type::Enum(_) = r {
-                Type::UndeclaredTypeError(Location::new(s, filename))
-            } else if let Ast::Symbol(_, s) = *l {
-                Type::Tag(s, arc::new(r))
-            } else {
-                unreachable!("Tag always has symbol as left operand");
             }
         }
 

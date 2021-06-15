@@ -34,8 +34,8 @@ impl Location {
     }
 }
 
-// Represents an error in IR
-pub enum IRError {
+// Represents an error in Ir
+pub enum IrError {
     InvalidType(Location),
     DuplicateTypeInUnion(Location, Location, TypeRc),
     DoubleExport(Location, Location, String),
@@ -50,35 +50,6 @@ pub enum DuplicateModuleInfo {
     NewSupersetOld,
     OldSupersetNew,
     BothSuperset,
-}
-
-// Represents a prefix operator.
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-pub enum PrefixOp {
-    Neg,
-    Span,
-}
-
-// Represents an infix operator.
-#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
-pub enum BinOp {
-    Mul,
-    Div,
-    Mod,
-    Add,
-    Sub,
-    BSL,
-    BSR,
-    LT,
-    GT,
-    LEQ,
-    GEQ,
-    EQ,
-    NEQ,
-    And,
-    Or,
-    Xor,
-    BoolXor,
 }
 
 // Represents metadata associated with sexpressions.
@@ -115,8 +86,12 @@ impl SExprMetadata {
 #[derive(Debug, Clone)]
 pub enum SExpr {
     // Empty
+    Empty(SExprMetadata),
+
+    // Type alias
     TypeAlias(SExprMetadata, String),
 
+    /*
     // Ints
     Int(SExprMetadata, i64),
 
@@ -128,22 +103,18 @@ pub enum SExpr {
 
     // Chars
     Char(SExprMetadata, u8),
-
-    // Booleans
-    True(SExprMetadata),
-    False(SExprMetadata),
+    */
 
     // Symbols
     Symbol(SExprMetadata, String),
 
-    // Enums
-    Enum(SExprMetadata, String),
-
+    /*
     // Strings
     String(SExprMetadata, String),
 
     // Lists
     List(SExprMetadata, Vec<SExpr>),
+    */
 
     // Functions
     Function(SExprMetadata, String),
@@ -151,24 +122,8 @@ pub enum SExpr {
     // External function application
     ExternalFunc(SExprMetadata, String, Vec<SExpr>),
 
-    // Prefix expression
-    Prefix(SExprMetadata, PrefixOp, Box<SExpr>),
-
-    // Infix expression
-    Infix(SExprMetadata, BinOp, Box<SExpr>, Box<SExpr>),
-
     // Chain operator
     Chain(SExprMetadata, Box<SExpr>, Box<SExpr>),
-
-    // Casting
-    As(SExprMetadata, Box<SExpr>),
-
-    // Boolean operators
-    And(SExprMetadata, Box<SExpr>, Box<SExpr>),
-    Or(SExprMetadata, Box<SExpr>, Box<SExpr>),
-
-    // If expression
-    If(SExprMetadata, Box<SExpr>, Box<SExpr>, Box<SExpr>),
 
     // Function application
     Application(SExprMetadata, Box<SExpr>, Box<SExpr>),
@@ -178,13 +133,13 @@ pub enum SExpr {
 
     // Scoping
     With(SExprMetadata, Vec<SExpr>, Box<SExpr>),
-    Walrus(SExprMetadata, String, Box<SExpr>),
+    //Walrus(SExprMetadata, String, Box<SExpr>),
 
     // Match expressions
     Match(SExprMetadata, Box<SExpr>, Vec<(TypeRc, SExpr, Location)>),
 
     // Member access
-    MemberAccess(SExprMetadata, Vec<String>),
+    // MemberAccess(SExprMetadata, Vec<String>),
 }
 
 impl SExpr {
@@ -192,32 +147,25 @@ impl SExpr {
     // Returns an immutable reference to the metadata.
     pub fn get_metadata(&self) -> &SExprMetadata {
         match self {
-            Self::TypeAlias(m, _)
-            | Self::Int(m, _)
+            Self::Empty(m)
+            | Self::TypeAlias(m, _)
+            /*| Self::Int(m, _)
             | Self::Float(m, _)
             | Self::Word(m, _)
-            | Self::Char(m, _)
-            | Self::True(m)
-            | Self::False(m)
+            | Self::Char(m, _)*/
             | Self::Symbol(m, _)
-            | Self::Enum(m, _)
-            | Self::String(m, _)
-            | Self::List(m, _)
+            //| Self::String(m, _)
+            //| Self::List(m, _)
             | Self::Function(m, _)
             | Self::ExternalFunc(m, _, _)
-            | Self::Prefix(m, _, _)
-            | Self::Infix(m, _, _, _)
             | Self::Chain(m, _, _)
-            | Self::As(m, _)
-            | Self::And(m, _, _)
-            | Self::Or(m, _, _)
-            | Self::If(m, _, _, _)
+            //| Self::As(m, _)
             | Self::Application(m, _, _)
             | Self::Assign(m, _, _)
             | Self::With(m, _, _)
-            | Self::Walrus(m, _, _)
-            | Self::Match(m, _, _)
-            | Self::MemberAccess(m, _) => m,
+            //| Self::Walrus(m, _, _)
+            | Self::Match(m, _, _) => m
+            //| Self::MemberAccess(m, _) => m,
         }
     }
 
@@ -225,39 +173,32 @@ impl SExpr {
     // Returns a mutable reference to the metadata.
     pub fn get_mutable_metadata(&mut self) -> &mut SExprMetadata {
         match self {
-            Self::TypeAlias(m, _)
-            | Self::Int(m, _)
+            Self::Empty(m)
+            | Self::TypeAlias(m, _)
+            /*| Self::Int(m, _)
             | Self::Float(m, _)
             | Self::Word(m, _)
-            | Self::Char(m, _)
-            | Self::True(m)
-            | Self::False(m)
+            | Self::Char(m, _)*/
             | Self::Symbol(m, _)
-            | Self::Enum(m, _)
-            | Self::String(m, _)
-            | Self::List(m, _)
+            //| Self::String(m, _)
+            //| Self::List(m, _)
             | Self::Function(m, _)
             | Self::ExternalFunc(m, _, _)
-            | Self::Prefix(m, _, _)
-            | Self::Infix(m, _, _, _)
             | Self::Chain(m, _, _)
-            | Self::As(m, _)
-            | Self::And(m, _, _)
-            | Self::Or(m, _, _)
-            | Self::If(m, _, _, _)
+            //| Self::As(m, _)
             | Self::Application(m, _, _)
             | Self::Assign(m, _, _)
             | Self::With(m, _, _)
-            | Self::Walrus(m, _, _)
-            | Self::Match(m, _, _)
-            | Self::MemberAccess(m, _) => m,
+            //| Self::Walrus(m, _, _)
+            | Self::Match(m, _, _) => m
+            //| Self::MemberAccess(m, _) => m,
         }
     }
 }
 
-// Represents a function in the IR.
+// Represents a function in the Ir.
 #[derive(Debug)]
-pub struct IRFunction {
+pub struct IrFunction {
     pub loc: Location,
     pub name: String,
     pub args: Vec<(String, TypeRc)>,
@@ -271,7 +212,7 @@ pub struct IRFunction {
 }
 
 #[derive(Debug)]
-pub struct IRImport {
+pub struct IrImport {
     pub name: String,
     pub loc: Location,
     pub qualified: bool,
@@ -279,7 +220,7 @@ pub struct IRImport {
 }
 
 #[derive(Debug)]
-pub struct IRExtern {
+pub struct IrExtern {
     pub loc: Location,
     pub extern_name: String,
     pub arg_types: Vec<TypeRc>,
@@ -289,30 +230,38 @@ pub struct IRExtern {
 
 // Represents a module of the ir.
 #[derive(Debug)]
-pub struct IRModule {
+pub struct IrModule {
     pub name: String,
     pub filename: String,
     pub contents: String,
     pub lib: bool,
-    pub imports: HashMap<String, IRImport>,
+    pub imports: HashMap<String, IrImport>,
     pub exports: HashMap<String, (Location, TypeRc)>,
-    pub externals: HashMap<String, IRExtern>,
+    pub externals: HashMap<String, IrExtern>,
     pub scope: Scope,
-    pub funcs: HashMap<String, IRFunction>,
+    pub funcs: HashMap<String, IrFunction>,
     pub types: HashMap<String, TypeRc>,
     pub sexprs: Vec<SExpr>,
 }
 
 #[derive(Debug)]
-pub struct IR {
-    pub modules: HashMap<String, IRModule>,
+pub struct Ir {
+    pub modules: HashMap<String, IrModule>,
 }
 
-impl IRModule {
-    // new() -> IRModule
-    // Creates a new IRModule.
-    pub fn new(filename: &str, contents: &str) -> IRModule {
-        IRModule {
+impl Default for Ir {
+    fn default() -> Ir {
+        Ir {
+            modules: HashMap::new()
+        }
+    }
+}
+
+impl IrModule {
+    // new() -> IrModule
+    // Creates a new IrModule.
+    pub fn new(filename: &str, contents: &str) -> IrModule {
+        IrModule {
             name: String::with_capacity(0),
             filename: String::from(filename),
             contents: String::from(contents),
@@ -321,8 +270,7 @@ impl IRModule {
             exports: HashMap::with_capacity(0),
             externals: HashMap::with_capacity(0),
 
-            // TODO: make init_builtins() be called in only a prelude
-            scope: Scope::new().init_builtins(),
+            scope: Scope::new(),
             funcs: HashMap::with_capacity(0),
             types: HashMap::with_capacity(0),
             sexprs: Vec::with_capacity(0),
@@ -330,12 +278,12 @@ impl IRModule {
     }
 }
 
-// convert_node(Ast, &str, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
+// convert_node(Ast, &str, bool, &mut HashMap<String, IrFunction>, &mut HashMap<String, TypeRc>) -> SExpr
 // Converts an ast node into an sexpression.
 fn convert_node(
     ast: Ast,
     filename: &str,
-    funcs: &mut HashMap<String, IRFunction>,
+    funcs: &mut HashMap<String, IrFunction>,
     global: bool,
     seen_funcs: &mut HashMap<String, usize>,
     types: &mut HashMap<String, TypeRc>,
@@ -343,6 +291,7 @@ fn convert_node(
     match ast {
         Ast::Empty => unreachable!("never empty"),
 
+        /*
         // Int
         Ast::Int(span, n) => SExpr::Int(
             SExprMetadata {
@@ -418,6 +367,7 @@ fn convert_node(
                 .map(|v| convert_node(v, filename, funcs, global, seen_funcs, types))
                 .collect(),
         ),
+        */
 
         // Symbol
         Ast::Symbol(span, s) => SExpr::Symbol(
@@ -434,21 +384,6 @@ fn convert_node(
             s,
         ),
 
-        // Enum
-        Ast::Enum(span, e) => SExpr::Enum(
-            SExprMetadata {
-                loc: Location::new(span, filename),
-                loc2: Location::empty(),
-                origin: String::with_capacity(0),
-                _type: arc::new(Type::Enum(e.clone())),
-                arity: 0,
-                saved_argc: None,
-                tailrec: false,
-                impure: false,
-            },
-            e,
-        ),
-
         Ast::Generic(_, _)
         | Ast::Annotation(_, _)
         | Ast::Import(_, _, _)
@@ -457,11 +392,12 @@ fn convert_node(
         | Ast::LibHeader(_, _, _)
         | Ast::Extern(_, _, _, _) => {
             unreachable!(
-                "annotations, imports, headers, and external declarations are already handled!"
+                "generics, annotations, imports, headers, and external declarations are already handled!"
             );
         }
 
         // String
+        /*
         Ast::String(span, s) => {
             let loc = Location::new(span, filename);
             let mut cons = SExpr::Application(
@@ -590,114 +526,12 @@ fn convert_node(
                 cons
             }
         }
+    */
 
-        // Prefix
-        Ast::Prefix(span, op, v) => {
-            let op = match op.as_str() {
-                "-" => PrefixOp::Neg,
-                "*" => PrefixOp::Span,
-                _ => panic!("Invalid operator"),
-            };
-
-            SExpr::Prefix(
-                SExprMetadata {
-                    loc: Location::new(span, filename),
-                    loc2: Location::empty(),
-                    origin: String::with_capacity(0),
-                    _type: arc::new(Type::Error),
-                    arity: 0,
-                    saved_argc: None,
-                    tailrec: false,
-                    impure: false,
-                },
-                op,
-                Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)),
-            )
-        }
 
         // Infix
         Ast::Infix(span, op, l, r) => {
-            // Deal with boolean operators
-            if op == "and" {
-                SExpr::And(
-                    SExprMetadata {
-                        loc: Location::new(span, filename),
-                        loc2: Location::empty(),
-                        origin: String::with_capacity(0),
-                        _type: arc::new(Type::Error),
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false,
-                        impure: false,
-                    },
-                    Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)),
-                    Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)),
-                )
-            } else if op == "or" {
-                SExpr::Or(
-                    SExprMetadata {
-                        loc: Location::new(span, filename),
-                        loc2: Location::empty(),
-                        origin: String::with_capacity(0),
-                        _type: arc::new(Type::Error),
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false,
-                        impure: false,
-                    },
-                    Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)),
-                    Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)),
-                )
-
-            // Deal with accessing members
-            } else if op == "::" {
-                let mut accesses = vec![];
-                if let Ast::Symbol(_, s) = *r {
-                    accesses.push(s);
-                }
-
-                let mut l = *l;
-                while let Ast::Infix(_, _, l_, r) = l {
-                    if let Ast::Symbol(_, s) = *r {
-                        accesses.insert(0, s);
-                    }
-
-                    l = *l_;
-                }
-
-                if let Ast::Symbol(_, s) = l {
-                    accesses.insert(0, s);
-                }
-
-                SExpr::MemberAccess(
-                    SExprMetadata {
-                        loc: Location::new(span, filename),
-                        loc2: Location::empty(),
-                        origin: String::with_capacity(0),
-                        _type: arc::new(Type::Error),
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false,
-                        impure: false,
-                    },
-                    accesses,
-                )
-            } else if op == ";" {
-                SExpr::Chain(
-                    SExprMetadata {
-                        loc: Location::new(span, filename),
-                        loc2: Location::empty(),
-                        origin: String::with_capacity(0),
-                        _type: arc::new(Type::Error),
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false,
-                        impure: false,
-                    },
-                    Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)),
-                    Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)),
-                )
-            } else if op == "$" {
+            if op == "$" {
                 SExpr::Application(
                     SExprMetadata {
                         loc: Location::new(span, filename),
@@ -713,62 +547,9 @@ fn convert_node(
                     Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)),
                 )
             } else {
-                // Get operator
-                let op = match op.as_str() {
-                    "*" => BinOp::Mul,
-                    "/" => BinOp::Div,
-                    "%" => BinOp::Mod,
-                    "+" => BinOp::Add,
-                    "-" => BinOp::Sub,
-                    "<<" => BinOp::BSL,
-                    ">>" => BinOp::BSR,
-                    "<" => BinOp::LT,
-                    ">" => BinOp::GT,
-                    "<=" => BinOp::LEQ,
-                    ">=" => BinOp::GEQ,
-                    "==" => BinOp::EQ,
-                    "!=" => BinOp::NEQ,
-                    "&" => BinOp::And,
-                    "|" => BinOp::Or,
-                    "^" => BinOp::Xor,
-                    "xor" => BinOp::BoolXor,
-                    _ => panic!("Invalid operator"),
-                };
-
-                // Return
-                SExpr::Infix(
-                    SExprMetadata {
-                        loc: Location::new(span, filename),
-                        loc2: Location::empty(),
-                        origin: String::with_capacity(0),
-                        _type: arc::new(Type::Error),
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false,
-                        impure: false,
-                    },
-                    op,
-                    Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)),
-                    Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)),
-                )
+                unreachable!("uwu moment");
             }
         }
-
-        Ast::As(span, value, _type) => SExpr::As(
-            SExprMetadata {
-                loc: Location::new(span, filename),
-                loc2: Location::new(_type.get_span(), filename),
-                origin: String::with_capacity(0),
-                _type: arc::new(types::convert_ast_to_type(*_type, filename)),
-                arity: 0,
-                saved_argc: None,
-                tailrec: false,
-                impure: false,
-            },
-            Box::new(convert_node(
-                *value, filename, funcs, global, seen_funcs, types,
-            )),
-        ),
 
         // Application
         Ast::Application(span, l, r) => SExpr::Application(
@@ -800,7 +581,7 @@ fn convert_node(
                 };
                 funcs.insert(
                     func_name.clone(),
-                    IRFunction {
+                    IrFunction {
                         loc: Location::new(span.clone(), filename),
                         name: name.clone(),
                         args: Vec::with_capacity(0),
@@ -872,7 +653,7 @@ fn convert_node(
                 };
                 funcs.insert(
                     func_name.clone(),
-                    IRFunction {
+                    IrFunction {
                         loc: Location::new(span.clone(), filename),
                         name: name.clone(),
                         args: Vec::with_capacity(0),
@@ -979,7 +760,7 @@ fn convert_node(
             );
 
             // Create the function
-            let func = IRFunction {
+            let func = IrFunction {
                 loc: Location::new(
                     Span {
                         start: span.start,
@@ -1054,7 +835,7 @@ fn convert_node(
             );
 
             // Create the function
-            let func = IRFunction {
+            let func = IrFunction {
                 loc: Location::new(span, filename),
                 name: String::with_capacity(0),
                 args: args
@@ -1105,6 +886,7 @@ fn convert_node(
             Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)),
         ),
 
+        /*
         Ast::Walrus(span, a, v) => SExpr::Walrus(
             SExprMetadata {
                 loc: Location::new(span, filename),
@@ -1119,6 +901,7 @@ fn convert_node(
             a,
             Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)),
         ),
+        */
 
         Ast::Match(span, v, a) => SExpr::Match(
             SExprMetadata {
@@ -1143,12 +926,23 @@ fn convert_node(
                 })
                 .collect(),
         ),
+
+        Ast::Int(_, _) => todo!(),
+        Ast::Float(_, _) => todo!(),
+        Ast::Word(_, _) => todo!(),
+        Ast::Char(_, _) => todo!(),
+        Ast::String(_, _) => todo!(),
+        Ast::Enum(_, _) => todo!(),
+        Ast::List(_, _) => todo!(),
+        Ast::Prefix(_, _, _) => todo!(),
+        Ast::As(_, _, _) => todo!(),
+        Ast::Walrus(_, _, _) => todo!(),
     }
 }
 
-// extract_types_to_ir(&Vec<Ast>, &mut IRModule) -> ()
-// Extracts types and inserts them into the IR's list of types.
-fn extract_types_to_ir(asts: &[Ast], module: &mut IRModule) {
+// extract_types_to_ir(&Vec<Ast>, &mut IrModule) -> ()
+// Extracts types and inserts them into the Ir's list of types.
+fn extract_types_to_ir(asts: &[Ast], module: &mut IrModule) {
     for ast in asts {
         if let Ast::AssignType(_, v, _) = ast {
             module.types.insert(v.clone(), arc::new(Type::Unknown));
@@ -1163,16 +957,16 @@ enum Purity {
     Default,
 }
 
-// convert_ast_to_ir(Vec<Ast>) -> IR
+// convert_ast_to_ir(Vec<Ast>) -> Ir
 // Converts a list of asts into ir.
 pub fn convert_ast_to_ir(
     filename: &str,
     contents: &str,
     asts: Vec<Ast>,
-    ir: &mut IR,
-) -> Result<(), Vec<IRError>> {
+    ir: &mut Ir,
+) -> Result<(), Vec<IrError>> {
     // Set up
-    let mut module = IRModule::new(filename, contents);
+    let mut module = IrModule::new(filename, contents);
     extract_types_to_ir(&asts, &mut module);
     let mut seen_funcs = HashMap::new();
     seen_funcs.insert(String::with_capacity(0), 0);
@@ -1209,13 +1003,13 @@ pub fn convert_ast_to_ir(
                 } else {
                     let _type = types::convert_ast_to_type(export.2, filename);
                     if let Type::UndeclaredTypeError(s) = _type {
-                        errors.push(IRError::InvalidType(s));
+                        errors.push(IrError::InvalidType(s));
                     } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
-                        errors.push(IRError::DuplicateTypeInUnion(s1, s2, t));
+                        errors.push(IrError::DuplicateTypeInUnion(s1, s2, t));
 
                     // Check export is unique
                     } else if module.exports.contains_key(&export.1) {
-                        errors.push(IRError::DoubleExport(
+                        errors.push(IrError::DoubleExport(
                             module.exports.get(&export.1).unwrap().0.clone(),
                             Location::new(export.0, filename),
                             export.1,
@@ -1255,7 +1049,7 @@ pub fn convert_ast_to_ir(
                         alias = name.join("::");
                     }
 
-                    imp_mod = IRImport {
+                    imp_mod = IrImport {
                         name: name.join("::"),
                         loc: Location::new(s, filename),
                         qualified: true,
@@ -1278,7 +1072,7 @@ pub fn convert_ast_to_ir(
                     name.reverse();
 
                     alias = name.join("::");
-                    imp_mod = IRImport {
+                    imp_mod = IrImport {
                         name: name.join("::"),
                         loc: Location::new(s, filename),
                         qualified: false,
@@ -1293,7 +1087,7 @@ pub fn convert_ast_to_ir(
 
                 match module.imports.entry(alias) {
                     Entry::Occupied(e) => {
-                        errors.push(IRError::RedefineImportAlias(
+                        errors.push(IrError::RedefineImportAlias(
                             e.get().loc.clone(),
                             imp_mod.loc,
                             e.key().clone(),
@@ -1312,7 +1106,7 @@ pub fn convert_ast_to_ir(
             } else if a == "@impure" {
                 purity = Purity::Impure;
             } else {
-                errors.push(IRError::UnsupportedAnnotation(
+                errors.push(IrError::UnsupportedAnnotation(
                     Location::new(span, filename),
                     a,
                 ));
@@ -1323,14 +1117,9 @@ pub fn convert_ast_to_ir(
 
             // Check type
             if let Type::UndeclaredTypeError(s) = t {
-                errors.push(IRError::InvalidType(s));
+                errors.push(IrError::InvalidType(s));
             } else if let Type::DuplicateTypeError(s1, s2, t2) = t {
-                errors.push(IRError::DuplicateTypeInUnion(s1, s2, t2));
-            } else if !t.is_ffi_compatible(&module.types) {
-                errors.push(IRError::InvalidFFIType(
-                    Location::new(ts, &module.filename),
-                    arc::new(t),
-                ));
+                errors.push(IrError::DuplicateTypeInUnion(s1, s2, t2));
             } else {
                 // Get arg types and return function
                 let mut arg_types = vec![];
@@ -1344,7 +1133,7 @@ pub fn convert_ast_to_ir(
                 // Add external function
                 module.externals.insert(
                     n,
-                    IRExtern {
+                    IrExtern {
                         loc: Location::new(span, &module.filename),
                         extern_name: c,
                         arg_types,
@@ -1394,7 +1183,7 @@ pub fn convert_ast_to_ir(
         Entry::Occupied(e) => {
             if format!("{:?}", module) == format!("{:?}", e.get()) {
             } else {
-                errors.push(IRError::DuplicateModule(
+                errors.push(IrError::DuplicateModule(
                     e.key().clone(),
                     DuplicateModuleInfo::NoSuperset,
                 ));
@@ -1416,8 +1205,8 @@ pub fn convert_ast_to_ir(
 pub fn convert_library_header(
     filename: &str,
     asts: Vec<Ast>,
-    ir: &mut IR,
-) -> Result<(), Vec<IRError>> {
+    ir: &mut Ir,
+) -> Result<(), Vec<IrError>> {
     let mut errors = vec![];
 
     for ast in asts {
@@ -1431,7 +1220,7 @@ pub fn convert_library_header(
     }
 }
 
-pub fn convert_module(filename: &str, ast: Ast, ir: &mut IR) -> Vec<IRError> {
+pub fn convert_module(filename: &str, ast: Ast, ir: &mut Ir) -> Vec<IrError> {
     let mut errors = vec![];
 
     if let Ast::LibHeader(_, name, exports) = ast {
@@ -1450,7 +1239,7 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut IR) -> Vec<IRError> {
         }
         full_name.reverse();
         let module_name = full_name.join("::");
-        let mut module = IRModule::new(filename, "");
+        let mut module = IrModule::new(filename, "");
         module.name = module_name.clone();
         module.lib = true;
 
@@ -1462,14 +1251,14 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut IR) -> Vec<IRError> {
             } else {
                 let _type = arc::new(types::convert_ast_to_type(export.4, filename));
                 if let Type::DuplicateTypeError(s1, s2, t) = &*_type {
-                    errors.push(IRError::DuplicateTypeInUnion(s1.clone(), s2.clone(), t.clone()));
+                    errors.push(IrError::DuplicateTypeInUnion(s1.clone(), s2.clone(), t.clone()));
 
                 // Check export is unique
                 } else {
                     let (span, export, arity, impure, _) = export;
                     match module.exports.entry(export) {
                         Entry::Occupied(e) => {
-                            errors.push(IRError::DoubleExport(
+                            errors.push(IrError::DoubleExport(
                                 e.get().0.clone(),
                                 Location::new(span, filename),
                                 e.key().clone(),
@@ -1499,13 +1288,13 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut IR) -> Vec<IRError> {
 
                             module.funcs.insert(
                                 e.key().clone(),
-                                IRFunction {
+                                IrFunction {
                                     loc: Location::empty(),
                                     name: e.key().clone(),
                                     args,
                                     captured: HashMap::with_capacity(0),
                                     captured_names: Vec::with_capacity(0),
-                                    body: SExpr::True(SExprMetadata {
+                                    body: SExpr::Empty(SExprMetadata {
                                         loc: Location::empty(),
                                         loc2: Location::empty(),
                                         origin: String::with_capacity(0),
@@ -1577,7 +1366,7 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut IR) -> Vec<IRError> {
                 }
 
                 if new_superset_of_old && old_superset_of_new {
-                    errors.push(IRError::DuplicateModule(
+                    errors.push(IrError::DuplicateModule(
                         e.key().clone(),
                         DuplicateModuleInfo::BothSuperset,
                     ));
@@ -1585,18 +1374,18 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut IR) -> Vec<IRError> {
                     //TODO: Duplicate module superset warning
                     if new_superset_of_old {
                         e.insert(module);
-                        errors.push(IRError::DuplicateModule(
+                        errors.push(IrError::DuplicateModule(
                             e.key().clone(),
                             DuplicateModuleInfo::NewSupersetOld,
                         ));
                     } else {
-                        errors.push(IRError::DuplicateModule(
+                        errors.push(IrError::DuplicateModule(
                             e.key().clone(),
                             DuplicateModuleInfo::OldSupersetNew,
                         ));
                     }
                 } else {
-                    errors.push(IRError::DuplicateModule(
+                    errors.push(IrError::DuplicateModule(
                         e.key().clone(),
                         DuplicateModuleInfo::NoSuperset,
                     ));
