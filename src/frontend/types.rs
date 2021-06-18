@@ -147,9 +147,7 @@ impl Type {
 
     // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
-    pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, TypeRc>) -> bool {
-        false
-        /*
+    pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, TypeRc>, generics_map: &mut HashMap<String, TypeRc>) -> bool {
         let _type = self;
 
         if _type == supertype {
@@ -167,9 +165,28 @@ impl Type {
             // Functions
             Type::Func(sf, sa) => {
                 if let Type::Func(f, a) = _type {
-                    f == sf && a == sa
+                    f.is_subtype(sf, types, generics_map) && a.is_subtype(sa, types, generics_map)
                 } else {
                     false
+                }
+            }
+
+            // Curried
+            Type::Curried(sf, sa) => {
+                if let Type::Curried(f, a) = _type {
+                    f.is_subtype(sf, types, generics_map) && a.is_subtype(sa, types, generics_map)
+                } else {
+                    false
+                }
+            }
+
+            // Generics
+            Type::Generic(g) => {
+                if let Some(t) = generics_map.get(g) {
+                    &**t == supertype
+                } else {
+                    generics_map.insert(g.clone(), arc::new(self.clone()));
+                    true
                 }
             }
 
@@ -180,7 +197,7 @@ impl Type {
                     for s in sub.0.iter() {
                         let mut is_subtype = false;
                         for f in fields.0.iter() {
-                            if s.is_subtype(&f, types) {
+                            if s.is_subtype(&f, types, generics_map) {
                                 is_subtype = true;
                                 break;
                             }
@@ -195,7 +212,7 @@ impl Type {
                 }
 
                 for t in fields.0.iter() {
-                    if _type.is_subtype(t, types) {
+                    if _type.is_subtype(t, types, generics_map) {
                         return true;
                     }
                 }
@@ -203,30 +220,39 @@ impl Type {
                 false
             }
 
-            // Enums
-            Type::Enum(se) => {
-                if let Type::Enum(e) = _type {
-                    se == e
-                } else {
-                    false
+            // Everything else is to be ignored
+            Type::Error
+            | Type::UndeclaredTypeError(_)
+            | Type::DuplicateTypeError(_, _, _)
+            | Type::Unknown
+            | Type::Symbol(_) => false,
+        }
+    }
+
+    pub fn replace_generics(&mut self, generics_map: &HashMap<String, TypeRc>) {
+        match self {
+            // Functions
+            Type::Func(f, a) => {
+                Arc::make_mut(f).replace_generics(generics_map);
+                Arc::make_mut(a).replace_generics(generics_map);
+            }
+
+            // Curried
+            Type::Curried(f, a) => {
+                Arc::make_mut(f).replace_generics(generics_map);
+                Arc::make_mut(a).replace_generics(generics_map);
+            }
+
+            // Generics
+            Type::Generic(g) => {
+                if let Some(t) = generics_map.get(g) {
+                    *self = (**t).clone();
                 }
             }
 
-            // Pointer
-            Type::Pointer(sp) => {
-                if let Type::Pointer(p) = _type {
-                    sp == p
-                } else {
-                    false
-                }
-            }
-
-            Type::Tag(s, t) => {
-                if let Type::Tag(s2, t2) = _type {
-                    s == s2 && t2.is_subtype(t, types)
-                } else {
-                    false
-                }
+            // Union types
+            Type::Union(fields) => {
+                todo!();
             }
 
             // Everything else is to be ignored
@@ -234,9 +260,13 @@ impl Type {
             | Type::UndeclaredTypeError(_)
             | Type::DuplicateTypeError(_, _, _)
             | Type::Unknown
-            | Type::Symbol(_)
-            | Type::Generic(_) => false,
-        }*/
+            | Type::Int
+            | Type::Float
+            | Type::Bool
+            | Type::Word
+            | Type::Char
+            | Type::Symbol(_) => { }
+        }
     }
 }
 

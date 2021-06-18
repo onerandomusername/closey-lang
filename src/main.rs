@@ -40,6 +40,7 @@ fn main() {
 
                         println!("{}", root);
                         let _ = correctness::check_correctness(&mut root, true);
+                        println!("{}", root);
                     }
 
                     None => {

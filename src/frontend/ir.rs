@@ -223,6 +223,7 @@ impl SExpr {
 pub struct IrFunction {
     pub loc: Location,
     pub name: String,
+    pub _type: TypeRc,
     pub args: Vec<(String, TypeRc)>,
     pub captured: HashMap<String, TypeRc>,
     pub captured_names: Vec<String>,
@@ -626,6 +627,7 @@ fn convert_node(
                     IrFunction {
                         loc: Location::new(span.clone(), filename),
                         name: name.clone(),
+                        _type: arc::new(Type::Unknown),
                         args: Vec::with_capacity(0),
                         captured: HashMap::with_capacity(0),
                         captured_names: Vec::with_capacity(0),
@@ -695,6 +697,7 @@ fn convert_node(
                     IrFunction {
                         loc: Location::new(span.clone(), filename),
                         name: name.clone(),
+                        _type: arc::new(Type::Unknown),
                         args: Vec::with_capacity(0),
                         captured: HashMap::with_capacity(0),
                         captured_names: Vec::with_capacity(0),
@@ -803,6 +806,7 @@ fn convert_node(
                     filename,
                 ),
                 name: name.clone(),
+                _type: arc::new(Type::Unknown),
                 args: args
                     .into_iter()
                     .map(|v| (v.0, arc::new(types::convert_ast_to_type(v.1, filename))))
@@ -870,6 +874,7 @@ fn convert_node(
             let func = IrFunction {
                 loc: Location::new(span, filename),
                 name: func_name.clone(),
+                _type: arc::new(Type::Unknown),
                 args: args
                     .into_iter()
                     .map(|v| (v.0, arc::new(types::convert_ast_to_type(v.1, filename))))
@@ -1319,6 +1324,7 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut Ir) -> Vec<IrError> {
                                 IrFunction {
                                     loc: Location::empty(),
                                     name: e.key().clone(),
+                                    _type: arc::new(Type::Unknown),
                                     args,
                                     captured: HashMap::with_capacity(0),
                                     captured_names: Vec::with_capacity(0),

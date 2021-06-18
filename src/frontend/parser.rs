@@ -1085,10 +1085,16 @@ fn type_union(parser: &mut Parser) -> Result<Ast, ParseError> {
     infixl_op!(parser, type_field, Token::Bar, Token::Unreachable)
 }
 
+// type_func(&mut Parser) -> Result<Ast, ParseError>
+// Parses a function type.
+fn type_func(parser: &mut Parser) -> Result<Ast, ParseError> {
+    infixr_op!(parser, type_union, Token::RightArrow, Token::Unreachable)
+}
+
 // type_expr(&mut Parser) -> Result<Ast, ParseError>
 // Parses a type.
 fn type_expr(parser: &mut Parser) -> Result<Ast, ParseError> {
-    infixr_op!(parser, type_union, Token::RightArrow, Token::PlusArrow)
+    infixl_op!(parser, type_func, Token::PlusArrow, Token::Unreachable)
 }
 
 // type_assignment(&mut Parser) -> Result<Ast, ParseError>
