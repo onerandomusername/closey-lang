@@ -1,7 +1,8 @@
 use std::env;
 use std::process::exit;
 
-use closeyc::frontend::ir::{self, Ir};
+use closeyc::backends::ir as backend_ir;
+use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
 use closeyc::frontend::correctness;
 
@@ -30,7 +31,7 @@ fn main() {
 
                         println!("{:?}", ast);
                         let mut root = Ir::default();
-                        match ir::convert_ast_to_ir("Main", &s, ast, &mut root) {
+                        match frontend_ir::convert_ast_to_ir("Main", &s, ast, &mut root) {
                             Ok(v) => v,
                             Err(_) => {
                                 eprintln!("Error creating ir!");
@@ -41,6 +42,9 @@ fn main() {
                         println!("{}", root);
                         let _ = correctness::check_correctness(&mut root, true);
                         println!("{}", root);
+
+                        let module = backend_ir::convert_frontend_ir_to_backend_ir(root.modules.into_iter().next().unwrap().1);
+                        println!("{}", module);
                     }
 
                     None => {

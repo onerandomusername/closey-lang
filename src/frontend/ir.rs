@@ -616,8 +616,9 @@ fn convert_node(
             if global && name != "_" {
                 let func_name = if seen_funcs.contains_key(&name) {
                     let seen = seen_funcs.get_mut(&name).unwrap();
+                    let name = format!("{}.{}", name, seen);
                     *seen += 1;
-                    format!("{}${}", name, seen)
+                    name
                 } else {
                     seen_funcs.insert(name.clone(), 0);
                     name.clone()
@@ -686,8 +687,9 @@ fn convert_node(
             if global && name != "_" {
                 let func_name = if seen_funcs.contains_key(&name) {
                     let seen = seen_funcs.get_mut(&name).unwrap();
+                    let name = format!("{}.{}", name, seen);
                     *seen += 1;
-                    format!("{}${}", name, seen)
+                    name
                 } else {
                     seen_funcs.insert(name.clone(), 0);
                     name.clone()
@@ -775,8 +777,9 @@ fn convert_node(
             // Get function id
             let func_name = if seen_funcs.contains_key(&name) {
                 let seen = seen_funcs.get_mut(&name).unwrap();
+                let name = format!("{}.{}", name, seen);
                 *seen += 1;
-                format!("{}${}", name, seen)
+                name
             } else {
                 seen_funcs.insert(name.clone(), 0);
                 name.clone()
@@ -852,8 +855,9 @@ fn convert_node(
             // Get function id
             let func_name = {
                 let seen = seen_funcs.get_mut("").unwrap();
+                let name = format!(".{}", seen);
                 *seen += 1;
-                format!("$${}", seen)
+                name
             };
 
             let arity = args.len();
