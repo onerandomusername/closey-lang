@@ -50,9 +50,6 @@ pub enum Type {
     Func(TypeRc, TypeRc),
     Curried(TypeRc, TypeRc),
     Union(HashSetWrapper<TypeRc>),
-    Enum(String),
-    Pointer(String),
-    Tag(String, TypeRc),
 }
 
 impl Display for Type {
@@ -60,7 +57,7 @@ impl Display for Type {
         match self {
             // Errors
             Type::Error => {
-                write!(f, "TypeError")?;
+                write!(f, "{{ unknown }}")?;
             }
             Type::UndeclaredTypeError(_) => {
                 write!(f, "UndeclaredTypeError")?;
@@ -93,12 +90,6 @@ impl Display for Type {
             }
             Type::Generic(g) => {
                 write!(f, "'{}", g)?;
-            }
-            Type::Enum(e) => {
-                write!(f, "enum {}", e)?;
-            }
-            Type::Pointer(p) => {
-                write!(f, "ptr {}", p)?;
             }
 
             // Function types
@@ -140,11 +131,6 @@ impl Display for Type {
                     }
                 }
             }
-
-            // Tagged types
-            Type::Tag(tag, field) => {
-                write!(f, "{}: {}", tag, field)?;
-            }
         }
         Ok(())
     }
@@ -158,13 +144,6 @@ impl Type {
         self.hash(&mut hash);
         hash.finish()
     }
-
-    /*
-     * (\x: 'x -> 'x . x) (\y: 'y . y)
-     *
-     *
-     *
-     * */
 
     // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
@@ -275,23 +254,7 @@ fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc,
                     v,
                 );
             } else {
-                match &*v {
-                    Type::Enum(a) | Type::Tag(a, _) => {
-                        if let Some((s2, _)) = labels.remove(a) {
-                            return Type::DuplicateTypeError(
-                                Location::new(s, filename),
-                                Location::new(s2, filename),
-                                arc::new(Type::Symbol(a.clone()))
-                            );
-                        }
-
-                        labels.insert(a.clone(), (s.clone(), v.clone()));
-                    }
-
-                    _ => {
-                        fields.insert(v, s.clone());
-                    }
-                }
+                fields.insert(v, s.clone());
             }
         }
     } else {
@@ -303,23 +266,7 @@ fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc,
                 v,
             );
         } else {
-            match &*v {
-                Type::Enum(a) | Type::Tag(a, _) => {
-                    if let Some((s2, _)) = labels.remove(a) {
-                        return Type::DuplicateTypeError(
-                            Location::new(s, filename),
-                            Location::new(s2, filename),
-                            arc::new(Type::Symbol(a.clone()))
-                        );
-                    }
-
-                    labels.insert(a.clone(), (s, v.clone()));
-                }
-
-                _ => {
-                    fields.insert(v, s);
-                }
-            }
+            fields.insert(v, s);
         }
     }
 

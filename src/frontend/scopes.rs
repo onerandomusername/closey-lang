@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use super::ir::Location;
 use super::types::{Type, TypeRc};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Scope {
-    pub variables: HashMap<String, (TypeRc, usize, Option<usize>, Location, bool, String)>,
+    pub variables: HashMap<String, (TypeRc, usize, Location, bool, String)>,
     pub parent: Option<Box<Scope>>,
     new_func: bool,
 }
@@ -21,30 +21,28 @@ impl Scope {
         }
     }
 
-    // put_var_raw(&mut self, String, TypeRc, usize, Option<usize>, Span, bool) -> ()
+    // put_var_raw(&mut self, String, TypeRc, usize, Span, bool) -> ()
     // Puts a variable in the current scope.
     pub fn put_var_raw(
         &mut self,
         name: String,
         _type: TypeRc,
         arity: usize,
-        saved_argc: Option<usize>,
         loc: Location,
         assigned: bool,
         origin: String,
     ) {
         self.variables
-            .insert(name, (_type, arity, saved_argc, loc, assigned, origin));
+            .insert(name, (_type, arity, loc, assigned, origin));
     }
 
-    // put_var(&mut self, &str, usize, Option<usize>, Span, bool) -> ()
+    // put_var(&mut self, &str, usize, Span, bool) -> ()
     // Puts a variable in the current scope.
     pub fn put_var(
         &mut self,
         name: &str,
         _type: &TypeRc,
         arity: usize,
-        saved_argc: Option<usize>,
         loc: &Location,
         assigned: bool,
         origin: &str,
@@ -54,7 +52,6 @@ impl Scope {
             (
                 _type.clone(),
                 arity,
-                saved_argc,
                 loc.clone(),
                 assigned,
                 String::from(origin),
@@ -62,12 +59,12 @@ impl Scope {
         );
     }
 
-    // get_var(&self, &str) -> Option<&(Type, usize, Option<usize>, Span)>
+    // get_var(&self, &str) -> Option<&(Type, usize, Location, bool, String)>
     // Gets a variable from the stack of scopes.
     pub fn get_var(
         &self,
         name: &str,
-    ) -> Option<&(TypeRc, usize, Option<usize>, Location, bool, String)> {
+    ) -> Option<&(TypeRc, usize, Location, bool, String)> {
         // Set up
         let name = String::from(name);
         let mut scope = self;
@@ -132,12 +129,8 @@ impl Scope {
             }
 
             // Return success if found
-            if let Some(v) = scope.variables.get(name) {
-                break if let Type::Enum(_) = *v.0 {
-                    false
-                } else {
-                    new_func
-                };
+            if scope.variables.get(name).is_some() {
+                break new_func;
             }
 
             // Get next scope

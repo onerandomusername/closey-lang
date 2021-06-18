@@ -29,7 +29,7 @@ fn main() {
 
                         println!("{:?}", ast);
                         let mut root = Ir::default();
-                        match ir::convert_ast_to_ir("arg", &s, ast, &mut root) {
+                        match ir::convert_ast_to_ir("Main", &s, ast, &mut root) {
                             Ok(v) => v,
                             Err(_) => {
                                 eprintln!("Error creating ir!");
@@ -37,7 +37,7 @@ fn main() {
                             }
                         };
 
-                        println!("{:#?}", root);
+                        println!("{}", root);
                     }
 
                     None => {

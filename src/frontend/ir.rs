@@ -1,6 +1,7 @@
 use logos::Span;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use super::parser::Ast;
 use super::scopes::Scope;
@@ -60,7 +61,6 @@ pub struct SExprMetadata {
     pub origin: String,
     pub _type: TypeRc,
     pub arity: usize,
-    pub saved_argc: Option<usize>,
     pub tailrec: bool,
     pub impure: bool,
 }
@@ -75,7 +75,6 @@ impl SExprMetadata {
             origin: String::with_capacity(0),
             _type: arc::new(Type::Error),
             arity: 0,
-            saved_argc: None,
             tailrec: false,
             impure: false,
         }
@@ -140,6 +139,29 @@ pub enum SExpr {
 
     // Member access
     // MemberAccess(SExprMetadata, Vec<String>),
+}
+
+impl Display for SExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SExpr::Empty(_) => todo!(),
+            SExpr::TypeAlias(_, _) => todo!(),
+            SExpr::Symbol(m, s) => write!(f, "{}: {}", s, m._type),
+            SExpr::Function(m, func) => write!(f, "func-get {}: {}", func, m._type),
+            SExpr::ExternalFunc(_, _, _) => todo!(),
+            SExpr::Chain(_, _, _) => todo!(),
+            SExpr::Application(_, func, arg) =>
+                if let SExpr::Application(_, _, _) = **func {
+                    write!(f, "{} ({})", func, arg)
+                } else {
+                    write!(f, "({}) ({})", func, arg)
+                }
+
+            SExpr::Assign(m, v, a) => write!(f, "set {}: {} = ({})", v, m._type, a),
+            SExpr::With(_, _, _) => todo!(),
+            SExpr::Match(_, _, _) => todo!(),
+        }
+    }
 }
 
 impl SExpr {
@@ -211,6 +233,19 @@ pub struct IrFunction {
     pub impure: bool,
 }
 
+impl Display for IrFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(func {} ", self.name)?;
+        for (i, (a, t)) in self.args.iter().enumerate() {
+            if i != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", a, t)?;
+        }
+        write!(f, " (\n            {}))", self.body)
+    }
+}
+
 #[derive(Debug)]
 pub struct IrImport {
     pub name: String,
@@ -244,9 +279,33 @@ pub struct IrModule {
     pub sexprs: Vec<SExpr>,
 }
 
+impl Display for IrModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(module {}", self.name)?;
+        for func in self.funcs.iter() {
+            write!(f, "\n        {}", func.1)?;
+        }
+
+        for sexpr in self.sexprs.iter() {
+            write!(f, "\n        ({})", sexpr)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct Ir {
     pub modules: HashMap<String, IrModule>,
+}
+
+impl Display for Ir {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(")?;
+        for module in self.modules.iter() {
+            write!(f, "\n    {}", module.1)?;
+        }
+        write!(f, ")")
+    }
 }
 
 impl Default for Ir {
@@ -300,7 +359,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Int),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -315,7 +373,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Float),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -330,7 +387,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Word),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -345,7 +401,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Char),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -359,7 +414,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -377,7 +431,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -407,7 +460,6 @@ fn convert_node(
                     _type: arc::new(Type::Error),
                     origin: String::with_capacity(0),
                     arity: 0,
-                    saved_argc: None,
                     tailrec: false,
                     impure: false,
                 },
@@ -418,7 +470,6 @@ fn convert_node(
                         _type: arc::new(Type::Error),
                         origin: String::with_capacity(0),
                         arity: 0,
-                        saved_argc: None,
                         tailrec: false,
                         impure: false,
                     },
@@ -429,7 +480,6 @@ fn convert_node(
                             _type: arc::new(Type::Error),
                             origin: String::with_capacity(0),
                             arity: 0,
-                            saved_argc: None,
                             tailrec: false,
                             impure: false,
                         },
@@ -442,7 +492,6 @@ fn convert_node(
                             _type: arc::new(Type::Char),
                             origin: String::with_capacity(0),
                             arity: 0,
-                            saved_argc: None,
                             tailrec: false,
                             impure: false,
                         },
@@ -460,7 +509,6 @@ fn convert_node(
                         _type: arc::new(Type::Char),
                         origin: String::with_capacity(0),
                         arity: 0,
-                        saved_argc: None,
                         tailrec: false,
                         impure: false,
                     },
@@ -478,7 +526,6 @@ fn convert_node(
                             _type: arc::new(Type::Error),
                             origin: String::with_capacity(0),
                             arity: 0,
-                            saved_argc: None,
                             tailrec: false,
                             impure: false,
                         },
@@ -489,7 +536,6 @@ fn convert_node(
                                 _type: arc::new(Type::Error),
                                 origin: String::with_capacity(0),
                                 arity: 0,
-                                saved_argc: None,
                                 tailrec: false,
                                 impure: false,
                             },
@@ -500,7 +546,6 @@ fn convert_node(
                                     _type: arc::new(Type::Error),
                                     origin: String::with_capacity(0),
                                     arity: 0,
-                                    saved_argc: None,
                                     tailrec: false,
                                     impure: false,
                                 },
@@ -513,7 +558,6 @@ fn convert_node(
                                     _type: arc::new(Type::Char),
                                     origin: String::with_capacity(0),
                                     arity: 0,
-                                    saved_argc: None,
                                     tailrec: false,
                                     impure: false,
                                 },
@@ -539,7 +583,6 @@ fn convert_node(
                         origin: String::with_capacity(0),
                         _type: arc::new(Type::Error),
                         arity: 0,
-                        saved_argc: None,
                         tailrec: false,
                         impure: false,
                     },
@@ -559,7 +602,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -602,7 +644,6 @@ fn convert_node(
                         origin: String::with_capacity(0),
                         _type: arc::new(Type::Error),
                         arity: 0,
-                        saved_argc: None,
                         tailrec: false,
                         impure: false,
                     },
@@ -614,7 +655,6 @@ fn convert_node(
                             origin: String::with_capacity(0),
                             _type: arc::new(Type::Error),
                             arity: 0,
-                            saved_argc: None,
                             tailrec: false,
                             impure: false,
                         },
@@ -629,7 +669,6 @@ fn convert_node(
                         origin: String::with_capacity(0),
                         _type: arc::new(Type::Error),
                         arity: 0,
-                        saved_argc: None,
                         tailrec: false,
                         impure: false,
                     },
@@ -676,7 +715,6 @@ fn convert_node(
                         origin: String::with_capacity(0),
                         _type: _type.clone(),
                         arity: 0,
-                        saved_argc: None,
                         tailrec: false,
                         impure: false,
                     },
@@ -688,7 +726,6 @@ fn convert_node(
                             origin: String::with_capacity(0),
                             _type,
                             arity: 0,
-                            saved_argc: None,
                             tailrec: false,
                             impure: false,
                         },
@@ -703,7 +740,6 @@ fn convert_node(
                         origin: String::with_capacity(0),
                         _type: arc::new(types::convert_ast_to_type(*_type, filename)),
                         arity: 0,
-                        saved_argc: None,
                         tailrec: false,
                         impure: false,
                     },
@@ -724,7 +760,6 @@ fn convert_node(
                     origin: String::with_capacity(0),
                     _type,
                     arity: 0,
-                    saved_argc: None,
                     tailrec: false,
                     impure: false,
                 },
@@ -752,7 +787,6 @@ fn convert_node(
                     origin: String::with_capacity(0),
                     _type: arc::new(Type::Error),
                     arity,
-                    saved_argc: None,
                     tailrec: false,
                     impure: false,
                 },
@@ -802,7 +836,6 @@ fn convert_node(
                     origin: String::with_capacity(0),
                     _type,
                     arity,
-                    saved_argc: None,
                     tailrec: false,
                     impure: false,
                 },
@@ -827,7 +860,6 @@ fn convert_node(
                     origin: String::with_capacity(0),
                     _type: arc::new(Type::Error),
                     arity,
-                    saved_argc: None,
                     tailrec: false,
                     impure: false,
                 },
@@ -837,7 +869,7 @@ fn convert_node(
             // Create the function
             let func = IrFunction {
                 loc: Location::new(span, filename),
-                name: String::with_capacity(0),
+                name: func_name.clone(),
                 args: args
                     .into_iter()
                     .map(|v| (v.0, arc::new(types::convert_ast_to_type(v.1, filename))))
@@ -876,7 +908,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -894,7 +925,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -910,7 +940,6 @@ fn convert_node(
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
                 arity: 0,
-                saved_argc: None,
                 tailrec: false,
                 impure: false,
             },
@@ -1272,7 +1301,6 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut Ir) -> Vec<IrError> {
                                 e.key(),
                                 &_type,
                                 arity,
-                                Some(0),
                                 &loc,
                                 true,
                                 &module_name,
@@ -1300,7 +1328,6 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut Ir) -> Vec<IrError> {
                                         origin: String::with_capacity(0),
                                         _type: ret_type.clone(),
                                         arity: 0,
-                                        saved_argc: None,
                                         tailrec: false,
                                         impure,
                                     }),
