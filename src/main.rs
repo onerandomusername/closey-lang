@@ -3,6 +3,7 @@ use std::process::exit;
 
 use closeyc::frontend::ir::{self, Ir};
 use closeyc::frontend::parser;
+use closeyc::frontend::correctness;
 
 pub static DEBUG: bool = false;
 
@@ -38,6 +39,7 @@ fn main() {
                         };
 
                         println!("{}", root);
+                        let _ = correctness::check_correctness(&mut root, true);
                     }
 
                     None => {
