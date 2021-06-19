@@ -5,22 +5,22 @@ use super::super::frontend::ir::{self, SExpr};
 
 #[derive(Copy, Clone)]
 pub enum IrInstruction {
-    Push,
     Ret,
     Load,
     Func,
-    Call
+    Call,
+    Apply
 }
 
 impl Display for IrInstruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use IrInstruction::*;
         match self {
-            Push => write!(f, "push"),
             Ret  => write!(f, "ret" ),
             Load => write!(f, "load"),
             Func => write!(f, "func"),
-            Call => write!(f, "call")
+            Call => write!(f, "call"),
+            Apply => write!(f, "apply")
         }
     }
 }
@@ -146,34 +146,29 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
 
         SExpr::Application(m, f, a) => {
             let f = conversion_helper(args_map, func, *f);
-            if let Some(f) = f {
-                func.ssas.push(IrSsa {
-                    local: None,
-                    instr: IrInstruction::Push,
-                    args: vec![IrArgument::Local(f)]
-                });
-            }
-
             let a = conversion_helper(args_map, func, *a);
-            if let Some(a) = a {
-                func.ssas.push(IrSsa {
-                    local: None,
-                    instr: IrInstruction::Push,
-                    args: vec![IrArgument::Local(a)]
-                });
+            let mut local = f;
+            if let Some(f) = local {
+                if let Some(a) = a {
+                    local = Some(func.get_next_local());
+                    func.ssas.push(IrSsa {
+                        local,
+                        instr: IrInstruction::Apply,
+                        args: vec![IrArgument::Local(f), IrArgument::Local(a)]
+                    });
+                }
             }
 
-            if m.arity == 0 && f.is_some() {
-                let local = Some(func.get_next_local());
+            if m.arity == 0 && local.is_some() {
+                let last = local.unwrap();
+                local = Some(func.get_next_local());
                 func.ssas.push(IrSsa {
                     local,
                     instr: IrInstruction::Call,
-                    args: vec![IrArgument::Local(f.unwrap())]
+                    args: vec![IrArgument::Local(last)]
                 });
-                local
-            } else {
-                f
             }
+            local
         }
 
         SExpr::Assign(_, _, _) => todo!(),
