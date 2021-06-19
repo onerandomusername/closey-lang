@@ -1,7 +1,9 @@
+use mmap::{MemoryMap, MapOption::{MapExecutable, MapReadable, MapWritable}};
 use std::env;
 use std::process::exit;
 
 use closeyc::backends::ir as backend_ir;
+use closeyc::backends::x86::codegen;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
 use closeyc::frontend::correctness;
@@ -45,6 +47,15 @@ fn main() {
 
                         let module = backend_ir::convert_frontend_ir_to_backend_ir(root.modules.into_iter().next().unwrap().1);
                         println!("{}", module);
+
+                        let code = codegen::generate_code(&module);
+                        let map = MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable]).unwrap();
+                        println!("{:?}", code);
+                        unsafe {
+                            std::ptr::copy(code.as_ptr(), map.data(), code.len());
+                            let exec: extern "C" fn() -> ! = std::mem::transmute(map.data());
+                            exec();
+                        }
                     }
 
                     None => {
