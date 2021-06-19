@@ -26,6 +26,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<Correc
             if let Some(func) = module.funcs.get(f) {
                 if func.checked {
                     m._type = func._type.clone();
+                    m.arity = func.args.len();
                 } else {
                     let mut func = module.funcs.remove(f).unwrap();
                     module.scope.push_scope(true);
@@ -44,6 +45,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<Correc
                     }
                     func._type = _type;
                     m._type = func._type.clone();
+                    m.arity = func.args.len();
 
                     func.checked = true;
                     module.funcs.insert(f.clone(), func);
@@ -68,6 +70,10 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<Correc
                 if a.get_metadata()._type.is_subtype(arg, &module.types, &mut generics_map) {
                     m._type = ret.clone();
                     Arc::make_mut(&mut m._type).replace_generics(&generics_map);
+
+                    if f.get_metadata().arity != 0 {
+                        m.arity = f.get_metadata().arity - 1;
+                    }
                 } else {
                     panic!("{} is not a subtype of {}", a, arg);
                 }
@@ -88,7 +94,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<Correc
     }
 }
 
-pub fn check_correctness(ir: &mut Ir, require_main: bool) -> Result<(), Vec<CorrectnessError>> {
+pub fn check_correctness(ir: &mut Ir, _require_main: bool) -> Result<(), Vec<CorrectnessError>> {
     let mut errors = vec![];
 
     for (_, module) in ir.modules.iter_mut() {

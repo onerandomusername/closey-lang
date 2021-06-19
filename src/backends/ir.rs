@@ -8,7 +8,8 @@ pub enum IrInstruction {
     Push,
     Ret,
     Load,
-    Func
+    Func,
+    Call
 }
 
 impl Display for IrInstruction {
@@ -19,6 +20,7 @@ impl Display for IrInstruction {
             Ret  => write!(f, "ret" ),
             Load => write!(f, "load"),
             Func => write!(f, "func"),
+            Call => write!(f, "call")
         }
     }
 }
@@ -142,29 +144,36 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
         SExpr::ExternalFunc(_, _, _) => todo!(),
         SExpr::Chain(_, _, _) => todo!(),
 
-        SExpr::Application(_, f, a) => {
+        SExpr::Application(m, f, a) => {
             let f = conversion_helper(args_map, func, *f);
-            let mut local = None;
             if let Some(f) = f {
-                local = Some(func.get_next_local());
                 func.ssas.push(IrSsa {
-                    local,
+                    local: None,
                     instr: IrInstruction::Push,
                     args: vec![IrArgument::Local(f)]
-                })
+                });
             }
 
             let a = conversion_helper(args_map, func, *a);
             if let Some(a) = a {
-                local = Some(func.get_next_local());
                 func.ssas.push(IrSsa {
-                    local,
+                    local: None,
                     instr: IrInstruction::Push,
                     args: vec![IrArgument::Local(a)]
-                })
+                });
             }
 
-            local
+            if m.arity == 0 && f.is_some() {
+                let local = Some(func.get_next_local());
+                func.ssas.push(IrSsa {
+                    local,
+                    instr: IrInstruction::Call,
+                    args: vec![IrArgument::Local(f.unwrap())]
+                });
+                local
+            } else {
+                f
+            }
         }
 
         SExpr::Assign(_, _, _) => todo!(),
