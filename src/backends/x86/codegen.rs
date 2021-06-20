@@ -97,8 +97,20 @@ impl GeneratedCode {
         self.data.as_ptr()
     }
 
-    pub fn relocate(&mut self, _base: *const u8) {
-        todo!();
+    pub fn relocate(&mut self, base: *const u8) {
+        for (code_addr, func) in self.func_refs.iter() {
+            if let Some(offset) = self.func_addrs.get(func) {
+                let addr = base as usize + *offset;
+
+                for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
+                    if i >= 8 {
+                        break;
+                    }
+
+                    *byte = ((addr >> (i * 8)) & 0xff) as u8;
+                }
+            }
+        }
     }
 
     #[allow(clippy::missing_safety_doc)]
@@ -224,9 +236,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             code.data.push(0x48 | if reg64 { 1 } else { 0 });
                             code.data.push(0xb8 | register);
 
+                            // Insert the label
+                            code.func_refs.insert(code.data.len(), func.clone());
+
                             // Value
                             for _ in 0..8 {
-                                code.data.push(0x69);
+                                code.data.push(0);
                             }
                         }
                     }

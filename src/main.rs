@@ -48,10 +48,11 @@ fn main() {
                         let mut module = backend_ir::convert_frontend_ir_to_backend_ir(root.modules.into_iter().next().unwrap().1);
                         println!("{}", module);
 
-                        let code = codegen::generate_code(&mut module);
+                        let mut code = codegen::generate_code(&mut module);
+                        let map = MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable]).unwrap();
+                        code.relocate(map.data());
                         code.print_data();
 
-                        let map = MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable]).unwrap();
                         unsafe {
                             std::ptr::copy(code.as_ptr(), map.data(), code.len());
                             let exec = code.get_main_fn(map.data()).unwrap();
