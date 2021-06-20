@@ -45,6 +45,8 @@ impl Display for IrArgument {
 
 pub struct IrSsa {
     pub local: Option<usize>,
+    pub local_lifetime: usize,
+    pub local_register: usize,
     pub instr: IrInstruction,
     pub args: Vec<IrArgument>
 }
@@ -122,6 +124,8 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                 let local = Some(func.get_next_local());
                 func.ssas.push(IrSsa {
                     local,
+                    local_lifetime: 0,
+                    local_register: 0,
                     instr: IrInstruction::Load,
                     args: vec![IrArgument::Argument(*a)]
                 });
@@ -135,6 +139,8 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
             let local = Some(func.get_next_local());
             func.ssas.push(IrSsa {
                 local,
+                local_lifetime: 0,
+                local_register: 0,
                 instr: IrInstruction::Func,
                 args: vec![IrArgument::Function(f)]
             });
@@ -153,6 +159,8 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                     local = Some(func.get_next_local());
                     func.ssas.push(IrSsa {
                         local,
+                        local_lifetime: 0,
+                        local_register: 0,
                         instr: IrInstruction::Apply,
                         args: vec![IrArgument::Local(f), IrArgument::Local(a)]
                     });
@@ -164,6 +172,8 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                 local = Some(func.get_next_local());
                 func.ssas.push(IrSsa {
                     local,
+                    local_lifetime: 0,
+                    local_register: 0,
                     instr: IrInstruction::Call,
                     args: vec![IrArgument::Local(last)]
                 });
@@ -174,6 +184,33 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
         SExpr::Assign(_, _, _) => todo!(),
         SExpr::With(_, _, _) => todo!(),
         SExpr::Match(_, _, _) => todo!(),
+    }
+}
+
+fn calculate_lifetimes(func: &mut IrFunction) {
+    let mut iter = func.ssas.iter_mut();
+    let mut i = 0;
+    while let Some(ssa) = iter.next() {
+        if ssa.local.is_none() {
+            continue;
+        }
+        let local = ssa.local.unwrap();
+
+        let mut j = i + 1;
+        for next in iter.as_slice() {
+            for arg in next.args.iter() {
+                if let IrArgument::Local(l) = arg {
+                    if *l == local {
+                        ssa.local_lifetime = j - i + 1;
+                        break;
+                    }
+                }
+            }
+
+            j += 1;
+        }
+
+        i += 1;
     }
 }
 
@@ -193,6 +230,8 @@ pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
         conversion_helper(&args_map, &mut f, func.1.body);
         f.ssas.push(IrSsa {
             local: None,
+            local_lifetime: 0,
+            local_register: 0,
             instr: IrInstruction::Ret,
             args: if let Some(l) = f.get_last_local() {
                 vec![IrArgument::Local(l)]
@@ -200,6 +239,8 @@ pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
                 vec![]
             }
         });
+
+        calculate_lifetimes(&mut f);
 
         new.funcs.push(f);
     }
