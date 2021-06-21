@@ -290,7 +290,7 @@ impl Display for IrModule {
         for sexpr in self.sexprs.iter() {
             write!(f, "\n        ({})", sexpr)?;
         }
-        write!(")")
+        write!(f, ")");
         Ok(())
     }
 }
