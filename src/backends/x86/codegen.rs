@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::super::ir::{IrArgument, IrFunction, IrInstruction, IrModule};
+use super::super::ir::{IrArgument, IrInstruction, IrModule};
 use super::super::common::{self, GeneratedCode};
 
 const NONARG_REGISTER_COUNT: usize = 9;
@@ -27,10 +27,23 @@ pub enum Register {
 }
 
 impl Register {
+    fn convert_arg_register_id(id: usize) -> Register {
+        use Register::*;
+
+        match id {
+            0 => RDI,
+            1 => RSI,
+            2 => RDX,
+            3 => RCX,
+            4 => R8,
+            5 => R9,
+            _ => Spilled
+        }
+    }
+
     fn convert_nonarg_register_id(id: usize) -> Register {
         use Register::*;
 
-        // rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
         match id {
             0 => RAX,
             1 => RDI,
@@ -122,7 +135,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
                         let (reg64, register) = local_to_register.get(arg).unwrap().convert_to_instr_arg();
 
-                        // mov %rax, arg0
+                        // mov %rax, local
                         code.data.push(0x48 | if reg64 { 1 } else { 0 });
                         code.data.push(0x89);
                         code.data.push(0xc0 | (register << 3));
@@ -133,24 +146,34 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 }
 
                 IrInstruction::Load => {
-                }
-
-                IrInstruction::Func => {
                     if let Some(local) = ssa.local {
-                        if let Some(IrArgument::Function(func)) = ssa.args.first() {
-                            let (reg64, register) = local_to_register.get(&local).unwrap().convert_to_instr_arg();
+                        let (reg64, local_register) = local_to_register.get(&local).unwrap().convert_to_instr_arg();
 
-                            // mov reg, func
-                            code.data.push(0x48 | if reg64 { 1 } else { 0 });
-                            code.data.push(0xb8 | register);
+                        match ssa.args.first() {
+                            Some(IrArgument::Argument(arg)) => {
+                                let (mem64, arg_register) = Register::convert_arg_register_id(*arg).convert_to_instr_arg();
 
-                            // Insert the label
-                            code.func_refs.insert(code.data.len(), func.clone());
-
-                            // Value
-                            for _ in 0..8 {
-                                code.data.push(0);
+                                // mov local, arg
+                                code.data.push(0x48 | if mem64 { 1 } else { 0 } | if reg64 { 4 } else { 0 });
+                                code.data.push(0x89);
+                                code.data.push(0xc0 | (arg_register << 3) | local_register);
                             }
+
+                            Some(IrArgument::Function(func)) => {
+                                // mov reg, func
+                                code.data.push(0x48 | if reg64 { 1 } else { 0 });
+                                code.data.push(0xb8 | local_register);
+
+                                // Insert the label
+                                code.func_refs.insert(code.data.len(), func.clone());
+
+                                // Value
+                                for _ in 0..8 {
+                                    code.data.push(0);
+                                }
+                            }
+
+                            _ => ()
                         }
                     }
                 }

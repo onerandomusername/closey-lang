@@ -7,7 +7,6 @@ use super::super::frontend::ir::{self, SExpr};
 pub enum IrInstruction {
     Ret,
     Load,
-    Func,
     Call,
     Apply
 }
@@ -18,7 +17,6 @@ impl Display for IrInstruction {
         match self {
             Ret  => write!(f, "ret" ),
             Load => write!(f, "load"),
-            Func => write!(f, "func"),
             Call => write!(f, "call"),
             Apply => write!(f, "apply")
         }
@@ -141,7 +139,7 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                 local,
                 local_lifetime: 0,
                 local_register: 0,
-                instr: IrInstruction::Func,
+                instr: IrInstruction::Load,
                 args: vec![IrArgument::Function(f)]
             });
             local
