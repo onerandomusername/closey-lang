@@ -181,8 +181,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     }
                 }
 
-                IrInstruction::Call => todo!(),
                 IrInstruction::Apply => todo!(),
+                IrInstruction::Call(_) => todo!(),
             }
         }
     }

@@ -7,8 +7,8 @@ use super::super::frontend::ir::{self, SExpr};
 pub enum IrInstruction {
     Ret,
     Load,
-    Call,
-    Apply
+    Apply,
+    Call(bool)
 }
 
 impl Display for IrInstruction {
@@ -17,8 +17,8 @@ impl Display for IrInstruction {
         match self {
             Ret  => write!(f, "ret" ),
             Load => write!(f, "load"),
-            Call => write!(f, "call"),
-            Apply => write!(f, "apply")
+            Apply => write!(f, "apply"),
+            Call(known_arity) => write!(f, "call{}", if *known_arity { "" } else { "?" }),
         }
     }
 }
@@ -148,34 +148,48 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
         SExpr::ExternalFunc(_, _, _) => todo!(),
         SExpr::Chain(_, _, _) => todo!(),
 
-        SExpr::Application(m, f, a) => {
-            let f = conversion_helper(args_map, func, *f);
-            let a = conversion_helper(args_map, func, *a);
-            let mut local = f;
-            if let Some(f) = local {
-                if let Some(a) = a {
+        SExpr::Application(m, mut f, a) => {
+            let mut stack = vec![(m.arity, *a)];
+
+            while let SExpr::Application(m, func, a) = *f {
+                stack.push((m.arity, *a));
+                f = func;
+            }
+
+            let mut f = conversion_helper(args_map, func, *f).unwrap();
+            let mut args = vec![];
+            let mut local = None;
+            let mut last_arity = stack.last().unwrap().0;
+            while let Some((arity, a)) = stack.pop() {
+                args.push(conversion_helper(args_map, func, a).unwrap());
+                if arity == 0 {
+                    use std::iter::once;
                     local = Some(func.get_next_local());
                     func.ssas.push(IrSsa {
                         local,
                         local_lifetime: 0,
                         local_register: 0,
-                        instr: IrInstruction::Apply,
-                        args: vec![IrArgument::Local(f), IrArgument::Local(a)]
+                        instr: IrInstruction::Call(last_arity != 0),
+                        args: once(IrArgument::Local(f)).chain(args.into_iter().map(IrArgument::Local)).collect()
                     });
+                    f = local.unwrap();
+                    args = vec![];
                 }
+                last_arity = arity;
             }
 
-            if m.arity == 0 && local.is_some() {
-                let last = local.unwrap();
+            if m.arity != 0 {
+                use std::iter::once;
                 local = Some(func.get_next_local());
                 func.ssas.push(IrSsa {
                     local,
                     local_lifetime: 0,
                     local_register: 0,
-                    instr: IrInstruction::Call,
-                    args: vec![IrArgument::Local(last)]
+                    instr: IrInstruction::Apply,
+                    args: once(IrArgument::Local(f)).chain(args.into_iter().map(IrArgument::Local)).collect()
                 });
             }
+
             local
         }
 
