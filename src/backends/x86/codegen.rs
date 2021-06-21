@@ -5,7 +5,7 @@ use super::super::common::{self, GeneratedCode};
 
 const NONARG_REGISTER_COUNT: usize = 9;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Register {
     RAX,
     RCX,
@@ -133,12 +133,15 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
             match ssa.instr {
                 IrInstruction::Ret => {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
-                        let (reg64, register) = local_to_register.get(arg).unwrap().convert_to_instr_arg();
+                        let register = local_to_register.get(arg).unwrap();
+                        if *register != Register::RAX {
+                            let (reg64, register) = local_to_register.get(arg).unwrap().convert_to_instr_arg();
 
-                        // mov %rax, local
-                        code.data.push(0x48 | if reg64 { 1 } else { 0 });
-                        code.data.push(0x89);
-                        code.data.push(0xc0 | (register << 3));
+                            // mov %rax, local
+                            code.data.push(0x48 | if reg64 { 1 } else { 0 });
+                            code.data.push(0x89);
+                            code.data.push(0xc0 | (register << 3));
+                        }
                     }
 
                     // ret
