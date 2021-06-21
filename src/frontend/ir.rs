@@ -290,8 +290,8 @@ impl Display for IrModule {
         for sexpr in self.sexprs.iter() {
             write!(f, "\n        ({})", sexpr)?;
         }
-        write!(f, ")");
-        Ok(())
+
+        write!(f, ")")
     }
 }
 
@@ -1151,7 +1151,7 @@ pub fn convert_ast_to_ir(
                 ));
             }
         } else if let Ast::Extern(span, c, n, t) = ast {
-            let ts = t.get_span().clone();
+            // let ts = t.get_span().clone();
             let t = types::convert_ast_to_type(*t, &module.filename);
 
             // Check type

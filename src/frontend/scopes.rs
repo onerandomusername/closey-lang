@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::ir::Location;
-use super::types::{Type, TypeRc};
+use super::types::{TypeRc};
 
 #[derive(Debug, Default)]
 pub struct Scope {

@@ -251,7 +251,7 @@ impl Type {
             }
 
             // Union types
-            Type::Union(fields) => {
+            Type::Union(_fields) => {
                 todo!();
             }
 
@@ -270,9 +270,9 @@ impl Type {
     }
 }
 
-// ast_sum_builder_helper(Ast, &str, &mut HashMap<TypeRc, Span>, &mut HashMap<String, Span>) -> Type
+// ast_sum_builder_helper(Ast, &str, &mut HashMap<TypeRc, Span>) -> Type
 // Helper function for building sum/union types.
-fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc, Span>, labels: &mut HashMap<String, (Span, TypeRc)>) -> Type {
+fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc, Span>) -> Type {
     let s = ast.get_span();
     let v = convert_ast_to_type(ast, filename);
     if let Type::Union(v) = v {
@@ -330,9 +330,8 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
         // Sum types
         Ast::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
-            let mut labels = HashMap::new();
             let mut acc = *l;
-            let t = ast_sum_builder_helper(*r, filename, &mut fields, &mut labels);
+            let t = ast_sum_builder_helper(*r, filename, &mut fields);
             if t != Type::Unknown {
                 return t;
             }
@@ -340,7 +339,7 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
             loop {
                 match acc {
                     Ast::Infix(_, op, l, r) if op == "|" => {
-                        let t = ast_sum_builder_helper(*r, filename, &mut fields, &mut labels);
+                        let t = ast_sum_builder_helper(*r, filename, &mut fields);
                         if t != Type::Unknown {
                             return t;
                         }
@@ -352,7 +351,7 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
                 }
             }
 
-            let t = ast_sum_builder_helper(acc, filename, &mut fields, &mut labels);
+            let t = ast_sum_builder_helper(acc, filename, &mut fields);
             if t != Type::Unknown {
                 return t;
             }

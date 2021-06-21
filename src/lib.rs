@@ -24,7 +24,7 @@ pub fn check<'a>(
     filenames: &'a [(String, bool)],
     codes: &[String],
     ir: &mut Ir,
-    require_main: bool,
+    _require_main: bool,
     emit: bool,
 ) -> Res<'a> {
     // Set up codespan
