@@ -3,10 +3,58 @@ use std::collections::HashMap;
 use super::super::ir::{IrArgument, IrInstruction, IrModule};
 use super::super::common::{self, GeneratedCode};
 
+const ARG_REGISTER_COUNT: usize = 6;
 const NONARG_REGISTER_COUNT: usize = 9;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Register {
+enum InstructionRegister {
+    Bit32(u8),
+    Bit64(u8),
+    Spilled(usize),
+    Arg(usize)
+}
+
+impl InstructionRegister {
+    fn is_register(&self) -> bool {
+        match self {
+            Self::Bit32(_)
+                | Self::Bit64(_) => true,
+
+            Self::Spilled(_)
+                | Self::Arg(_) => false
+        }
+    }
+
+    fn is_64_bit(&self) -> u8 {
+        if let Self::Bit64(_) = self {
+            1
+        } else {
+            0
+        }
+    }
+
+    fn get_register(&self) -> u8 {
+        match self {
+            Self::Bit32(r)
+                | Self::Bit64(r) => *r,
+
+            Self::Spilled(_) => panic!("Spilled values are not registers!"),
+            Self::Arg(_) => panic!("Argument values are not registers!")
+        }
+    }
+
+    fn get_offset(&self) -> usize {
+        match self {
+            Self::Spilled(v)
+                | Self::Arg(v) => *v,
+
+            Self::Bit32(_)
+                | Self::Bit64(_) => panic!("Register cannot be an offset!")
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum Register {
     RAX,
     RCX,
     RDX,
@@ -23,7 +71,8 @@ pub enum Register {
     R13,
     R14,
     R15,
-    Spilled
+    Spilled(usize),
+    Arg(usize)
 }
 
 impl Register {
@@ -37,7 +86,7 @@ impl Register {
             3 => RCX,
             4 => R8,
             5 => R9,
-            _ => Spilled
+            _ => Arg(id - ARG_REGISTER_COUNT)
         }
     }
 
@@ -54,31 +103,33 @@ impl Register {
             6 => R9,
             7 => R10,
             8 => R11,
-            _ => Spilled
+            _ => Spilled(id - NONARG_REGISTER_COUNT)
         }
     }
 
-    fn convert_to_instr_arg(&self) -> (bool, u8) {
+    fn convert_to_instr_arg(&self) -> InstructionRegister {
         use Register::*;
+        use InstructionRegister as IR;
 
         match self {
-            RAX => (false, 0),
-            RCX => (false, 1),
-            RDX => (false, 2),
-            RBX => (false, 3),
-            RSP => (false, 4),
-            RBP => (false, 5),
-            RSI => (false, 6),
-            RDI => (false, 7),
-            R8 => (true, 0),
-            R9 => (true, 1),
-            R10 => (true, 2),
-            R11 => (true, 3),
-            R12 => (true, 4),
-            R13 => (true, 5),
-            R14 => (true, 6),
-            R15 => (true, 7),
-            Spilled => todo!()
+            RAX => IR::Bit32(0),
+            RCX => IR::Bit32(1),
+            RDX => IR::Bit32(2),
+            RBX => IR::Bit32(3),
+            RSP => IR::Bit32(4),
+            RBP => IR::Bit32(5),
+            RSI => IR::Bit32(6),
+            RDI => IR::Bit32(7),
+            R8  => IR::Bit64(0),
+            R9  => IR::Bit64(1),
+            R10 => IR::Bit64(2),
+            R11 => IR::Bit64(3),
+            R12 => IR::Bit64(4),
+            R13 => IR::Bit64(5),
+            R14 => IR::Bit64(6),
+            R15 => IR::Bit64(7),
+            Spilled(s) => IR::Spilled(*s),
+            Arg(s) => IR::Arg(*s)
         }
     }
 }
@@ -135,12 +186,26 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
                         let register = local_to_register.get(arg).unwrap();
                         if *register != Register::RAX {
-                            let (reg64, register) = local_to_register.get(arg).unwrap().convert_to_instr_arg();
+                            let local_location = local_to_register.get(arg).unwrap().convert_to_instr_arg();
 
-                            // mov %rax, local
-                            code.data.push(0x48 | if reg64 { 1 } else { 0 });
-                            code.data.push(0x89);
-                            code.data.push(0xc0 | (register << 3));
+                            if local_location.is_register() {
+                                // mov rax, local_reg
+                                code.data.push(0x48 | local_location.is_64_bit());
+                                code.data.push(0x89);
+                                code.data.push(0xc0 | (local_location.get_register() << 3));
+                            } else {
+                                // TODO: check this (im pretty sure its correct though)
+                                // mov rax, [rbp + offset]
+                                code.data.push(0x48);
+                                code.data.push(0x8b);
+                                code.data.push(0x85);
+
+                                let offset: u32 = u32::MAX - (local_location.get_offset() as u32 - 1) * 8;
+                                code.data.push((offset         & 0xff) as u8);
+                                code.data.push(((offset >>  8) & 0xff) as u8);
+                                code.data.push(((offset >> 16) & 0xff) as u8);
+                                code.data.push(((offset >> 24) & 0xff) as u8);
+                            }
                         }
                     }
 
@@ -150,22 +215,52 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                 IrInstruction::Load => {
                     if let Some(local) = ssa.local {
-                        let (reg64, local_register) = local_to_register.get(&local).unwrap().convert_to_instr_arg();
+                        let local_location = local_to_register.get(&local).unwrap().convert_to_instr_arg();
 
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
-                                let (mem64, arg_register) = Register::convert_arg_register_id(*arg).convert_to_instr_arg();
+                                let arg_location = Register::convert_arg_register_id(*arg).convert_to_instr_arg();
 
                                 // mov local, arg
-                                code.data.push(0x48 | if mem64 { 1 } else { 0 } | if reg64 { 4 } else { 0 });
-                                code.data.push(0x89);
-                                code.data.push(0xc0 | (arg_register << 3) | local_register);
+                                match (arg_location.is_register(), local_location.is_register()) {
+                                    (true, true) => {
+                                        code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
+                                        code.data.push(0x89);
+                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register());
+                                    }
+
+                                    (true, false) => {
+                                        todo!();
+                                    }
+
+                                    (false, true) => {
+                                        // TODO: check this (im pretty sure its correct though)
+                                        // mov local, [rbp + offset]
+                                        code.data.push(0x48 | (local_location.is_64_bit() << 2));
+                                        code.data.push(0x8b);
+                                        code.data.push(0x85 | (local_location.get_register() << 3));
+
+                                        let offset: u32 = u32::MAX - (local_location.get_offset() as u32 - 1) * 8;
+                                        code.data.push((offset         & 0xff) as u8);
+                                        code.data.push(((offset >>  8) & 0xff) as u8);
+                                        code.data.push(((offset >> 16) & 0xff) as u8);
+                                        code.data.push(((offset >> 24) & 0xff) as u8);
+                                    }
+
+                                    (false, false) => {
+                                        todo!();
+                                    }
+                                }
                             }
 
                             Some(IrArgument::Function(func)) => {
-                                // mov reg, func
-                                code.data.push(0x48 | if reg64 { 1 } else { 0 });
-                                code.data.push(0xb8 | local_register);
+                                // mov local, func
+                                code.data.push(0x48 | local_location.is_64_bit());
+                                if local_location.is_register() {
+                                    code.data.push(0xb8 | local_location.get_register());
+                                } else {
+                                    // todo!();
+                                }
 
                                 // Insert the label
                                 code.func_refs.insert(code.data.len(), func.clone());
@@ -182,7 +277,25 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 }
 
                 IrInstruction::Apply => todo!(),
-                IrInstruction::Call(_) => todo!(),
+                IrInstruction::Call(_known_arity) => {
+                    /*
+                    if known_arity {
+                        for (i, arg) in ssa.args.iter().skip(1).enumerate() {
+                            let reg = Register::convert_arg_register_id(i);
+                        }
+
+                        // call register
+                        let (reg64, func_register) = local_to_register.get(if let IrArgument::Local(func) = ssa.args.first().unwrap() { func } else { unreachable!(); }).unwrap().convert_to_instr_arg();
+                        if reg64 {
+                            code.data.push(0x41);
+                        }
+                        code.data.push(0xff);
+                        code.data.push(0xd0 | func_register)
+                    } else {
+                        todo!();
+                    }
+                    */
+                }
             }
         }
     }

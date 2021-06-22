@@ -90,7 +90,8 @@ pub(crate) fn linear_scan(func: &mut IrFunction, register_count: usize) {
                     continue 'a;
                 }
             }
-            ssa.local_register = register_count;
+            ssa.local_register = register_lifetimes.len();
+            register_lifetimes.push(ssa.local_lifetime);
         }
     }
 }

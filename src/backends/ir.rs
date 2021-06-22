@@ -156,10 +156,10 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                 f = func;
             }
 
+            let mut last_arity = f.get_metadata().arity;
             let mut f = conversion_helper(args_map, func, *f).unwrap();
             let mut args = vec![];
             let mut local = None;
-            let mut last_arity = stack.last().unwrap().0;
             while let Some((arity, a)) = stack.pop() {
                 args.push(conversion_helper(args_map, func, a).unwrap());
                 if arity == 0 {
