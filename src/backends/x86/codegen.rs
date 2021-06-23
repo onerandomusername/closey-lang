@@ -86,7 +86,7 @@ impl Register {
             3 => RCX,
             4 => R8,
             5 => R9,
-            _ => Arg(id - ARG_REGISTER_COUNT)
+            _ => Arg(id - ARG_REGISTER_COUNT + 1)
         }
     }
 
@@ -103,7 +103,7 @@ impl Register {
             6 => R9,
             7 => R10,
             8 => R11,
-            _ => Spilled(id - NONARG_REGISTER_COUNT)
+            _ => Spilled(id - NONARG_REGISTER_COUNT + 1)
         }
     }
 
@@ -173,6 +173,14 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         // Add function
         code.func_addrs.insert(func.name.clone(), code.len());
 
+        // push rbp
+        code.data.push(0x55);
+
+        // mov rbp, rsp
+        code.data.push(0x48);
+        code.data.push(0x89);
+        code.data.push(0xe5);
+
         common::linear_scan(func, NONARG_REGISTER_COUNT);
 
         let mut local_to_register = HashMap::new();
@@ -200,7 +208,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 code.data.push(0x8b);
                                 code.data.push(0x85);
 
-                                let offset: u32 = u32::MAX - (local_location.get_offset() as u32 - 1) * 8;
+                                let offset: u32 = (-(local_location.get_offset() as i32) * 8) as u32;
                                 code.data.push((offset         & 0xff) as u8);
                                 code.data.push(((offset >>  8) & 0xff) as u8);
                                 code.data.push(((offset >> 16) & 0xff) as u8);
@@ -208,6 +216,9 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             }
                         }
                     }
+
+                    // pop rbp
+                    code.data.push(0x5d);
 
                     // ret
                     code.data.push(0xc3);
@@ -222,25 +233,25 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 let arg_location = Register::convert_arg_register_id(*arg).convert_to_instr_arg();
 
                                 // mov local, arg
-                                match (arg_location.is_register(), local_location.is_register()) {
+                                match (local_location.is_register(), arg_location.is_register()) {
                                     (true, true) => {
                                         code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
                                         code.data.push(0x89);
                                         code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register());
                                     }
 
-                                    (true, false) => {
+                                    (false, true) => {
                                         todo!();
                                     }
 
-                                    (false, true) => {
+                                    (true, false) => {
                                         // TODO: check this (im pretty sure its correct though)
                                         // mov local, [rbp + offset]
                                         code.data.push(0x48 | (local_location.is_64_bit() << 2));
                                         code.data.push(0x8b);
-                                        code.data.push(0x85 | (local_location.get_register() << 3));
+                                        code.data.push(0x80 | (local_location.get_register() << 3) | Register::RBP.convert_to_instr_arg().get_register());
 
-                                        let offset: u32 = u32::MAX - (local_location.get_offset() as u32 - 1) * 8;
+                                        let offset: u32 = ((arg_location.get_offset() as i32 + 2) * 8) as u32;
                                         code.data.push((offset         & 0xff) as u8);
                                         code.data.push(((offset >>  8) & 0xff) as u8);
                                         code.data.push(((offset >> 16) & 0xff) as u8);
@@ -254,20 +265,20 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             }
 
                             Some(IrArgument::Function(func)) => {
-                                // mov local, func
-                                code.data.push(0x48 | local_location.is_64_bit());
                                 if local_location.is_register() {
+                                    // mov local, func
+                                    code.data.push(0x48 | local_location.is_64_bit());
                                     code.data.push(0xb8 | local_location.get_register());
+
+                                    // Insert the label
+                                    code.func_refs.insert(code.data.len(), func.clone());
+
+                                    // Value
+                                    for _ in 0..8 {
+                                        code.data.push(0);
+                                    }
                                 } else {
-                                    // todo!();
-                                }
-
-                                // Insert the label
-                                code.func_refs.insert(code.data.len(), func.clone());
-
-                                // Value
-                                for _ in 0..8 {
-                                    code.data.push(0);
+                                    todo!();
                                 }
                             }
 

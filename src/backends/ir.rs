@@ -23,7 +23,6 @@ impl Display for IrInstruction {
     }
 }
 
-#[derive(Clone)]
 pub enum IrArgument {
     Local(usize),
     Argument(usize),
@@ -36,7 +35,7 @@ impl Display for IrArgument {
         match self {
             Local(l) => write!(f, "%{}", l),
             Argument(a) => write!(f, "${}", a),
-            Function(g) => write!(f, "{}", g)
+            Function(g) => write!(f, "@{}", g)
         }
     }
 }
@@ -112,43 +111,45 @@ impl Display for IrModule {
     }
 }
 
-fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, sexpr: SExpr) -> Option<usize> {
+fn get_arg_if_applicable(args_map: &HashMap<String, usize>, sexpr: SExpr) -> Result<IrArgument, SExpr> {
     match sexpr {
-        SExpr::Empty(_) => todo!(),
-        SExpr::TypeAlias(_, _) => todo!(),
-
         SExpr::Symbol(_, s) => {
             if let Some(a) = args_map.get(&s) {
-                let local = Some(func.get_next_local());
-                func.ssas.push(IrSsa {
-                    local,
-                    local_lifetime: 0,
-                    local_register: 0,
-                    instr: IrInstruction::Load,
-                    args: vec![IrArgument::Argument(*a)]
-                });
-                local
+                Ok(IrArgument::Argument(*a))
             } else {
                 todo!("symbols that aren't arguments");
             }
         }
 
         SExpr::Function(_, f) => {
+            Ok(IrArgument::Function(f.clone()))
+        }
+
+        _ => Err(sexpr)
+    }
+}
+
+fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, sexpr: SExpr) -> Option<usize> {
+    match get_arg_if_applicable(args_map, sexpr) {
+        Ok(v) => {
             let local = Some(func.get_next_local());
             func.ssas.push(IrSsa {
                 local,
                 local_lifetime: 0,
                 local_register: 0,
                 instr: IrInstruction::Load,
-                args: vec![IrArgument::Function(f)]
+                args: vec![v]
             });
             local
         }
 
-        SExpr::ExternalFunc(_, _, _) => todo!(),
-        SExpr::Chain(_, _, _) => todo!(),
+        Err(SExpr::Empty(_)) => todo!(),
+        Err(SExpr::TypeAlias(_, _)) => todo!(),
 
-        SExpr::Application(m, mut f, a) => {
+        Err(SExpr::ExternalFunc(_, _, _)) => todo!(),
+        Err(SExpr::Chain(_, _, _)) => todo!(),
+
+        Err(SExpr::Application(m, mut f, a)) => {
             let mut stack = vec![(m.arity, *a)];
 
             while let SExpr::Application(m, func, a) = *f {
@@ -157,11 +158,17 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
             }
 
             let mut last_arity = f.get_metadata().arity;
-            let mut f = conversion_helper(args_map, func, *f).unwrap();
+            let mut f = match get_arg_if_applicable(args_map, *f) {
+                Ok(v) => v,
+                Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap())
+            };
             let mut args = vec![];
             let mut local = None;
             while let Some((arity, a)) = stack.pop() {
-                args.push(conversion_helper(args_map, func, a).unwrap());
+                args.push(match get_arg_if_applicable(args_map, a) {
+                    Ok(v) => v,
+                    Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap())
+                });
                 if arity == 0 {
                     use std::iter::once;
                     local = Some(func.get_next_local());
@@ -170,9 +177,9 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                         local_lifetime: 0,
                         local_register: 0,
                         instr: IrInstruction::Call(last_arity != 0),
-                        args: once(IrArgument::Local(f)).chain(args.into_iter().map(IrArgument::Local)).collect()
+                        args: once(f).chain(args.into_iter()).collect()
                     });
-                    f = local.unwrap();
+                    f = IrArgument::Local(local.unwrap());
                     args = vec![];
                 }
                 last_arity = arity;
@@ -186,16 +193,18 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                     local_lifetime: 0,
                     local_register: 0,
                     instr: IrInstruction::Apply,
-                    args: once(IrArgument::Local(f)).chain(args.into_iter().map(IrArgument::Local)).collect()
+                    args: once(f).chain(args.into_iter()).collect()
                 });
             }
 
             local
         }
 
-        SExpr::Assign(_, _, _) => todo!(),
-        SExpr::With(_, _, _) => todo!(),
-        SExpr::Match(_, _, _) => todo!(),
+        Err(SExpr::Assign(_, _, _)) => todo!(),
+        Err(SExpr::With(_, _, _)) => todo!(),
+        Err(SExpr::Match(_, _, _)) => todo!(),
+
+        Err(SExpr::Symbol(_, _)) | Err(SExpr::Function(_, _)) => unreachable!()
     }
 }
 
