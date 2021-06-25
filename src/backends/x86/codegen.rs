@@ -291,6 +291,11 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         }
                     }
 
+                    // mov rsp, rbp
+                    code.data.push(0x48);
+                    code.data.push(0x89);
+                    code.data.push(0xec);
+
                     // pop rbp
                     code.data.push(0x5d);
 
@@ -379,24 +384,73 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 }
 
                 IrInstruction::Apply => todo!(),
-                IrInstruction::Call(_known_arity) => {
-                    /*
+                IrInstruction::Call(known_arity) => {
                     if known_arity {
                         for (i, arg) in ssa.args.iter().skip(1).enumerate() {
-                            let reg = Register::convert_arg_register_id(i);
-                        }
+                            let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
 
-                        // call register
-                        let (reg64, func_register) = local_to_register.get(if let IrArgument::Local(func) = ssa.args.first().unwrap() { func } else { unreachable!(); }).unwrap().convert_to_instr_arg();
-                        if reg64 {
-                            code.data.push(0x41);
+                            match arg {
+                                IrArgument::Local(_) => todo!(),
+                                IrArgument::Argument(_) => todo!(),
+
+                                IrArgument::Function(func) => {
+                                    if reg.is_register() {
+                                        // mov local, func
+                                        code.data.push(0x48 | reg.is_64_bit());
+                                        code.data.push(0xb8 | reg.get_register());
+
+                                        // Insert the label
+                                        code.func_refs
+                                            .insert(code.data.len(), (func.clone(), false));
+
+                                        // Value
+                                        for _ in 0..8 {
+                                            code.data.push(0);
+                                        }
+                                    } else {
+                                        todo!();
+                                    }
+                                }
+                            }
+
+                            match ssa.args.first().unwrap() {
+                                IrArgument::Local(_) => todo!(),
+                                IrArgument::Argument(_) => todo!(),
+
+                                IrArgument::Function(func) => {
+                                    // call func
+                                    code.data.push(0xe8);
+
+                                    // Insert the label
+                                    code.func_refs.insert(code.data.len(), (func.clone(), true));
+
+                                    // Value
+                                    for _ in 0..4 {
+                                        code.data.push(0);
+                                    }
+                                }
+                            }
+
+                            if let Some(local) = ssa.local {
+                                let local_location = Register::convert_nonarg_register_id(local)
+                                    .convert_to_instr_arg();
+
+                                if local_location.is_register() {
+                                    // mov local, rax
+                                    code.data.push(0x48 | local_location.is_64_bit());
+                                    code.data.push(0x8b);
+                                    code.data.push(
+                                        0xc0 | (local_location.get_register() << 3)
+                                            | Register::Rax.convert_to_instr_arg().get_register(),
+                                    );
+                                } else {
+                                    todo!();
+                                }
+                            }
                         }
-                        code.data.push(0xff);
-                        code.data.push(0xd0 | func_register)
                     } else {
                         todo!();
                     }
-                    */
                 }
             }
         }
