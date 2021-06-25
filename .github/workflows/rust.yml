@@ -22,6 +22,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Update Rust
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: rustup update
+
     - name: Build
       run: cargo build --release --verbose
       
