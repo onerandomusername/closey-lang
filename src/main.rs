@@ -10,6 +10,15 @@ use closeyc::frontend::correctness;
 
 pub static DEBUG: bool = false;
 
+
+enum ExecMode {
+    Exec,
+    Correctness,
+    Ir,
+    Codegen,
+    All
+}
+
 fn main() {
     let mut args = env::args();
     let name = args.next().unwrap();
@@ -22,6 +31,18 @@ fn main() {
             "exec" => {
                 match args.next() {
                     Some(s) => {
+                        let mode = if let Some(m) = args.next() {
+                            match m.as_str() {
+                                "analyse" | "analyze" => ExecMode::Correctness,
+                                "ir" => ExecMode::Ir,
+                                "codegen" => ExecMode::Codegen,
+                                "all" => ExecMode::All,
+                                _ => ExecMode::Exec
+                            }
+                        } else {
+                            ExecMode::Exec
+                        };
+
                         let ast = match parser::parse(&s) {
                             Ok(v) => v,
 
@@ -31,7 +52,6 @@ fn main() {
                             }
                         };
 
-                        println!("{:?}", ast);
                         let mut root = Ir::default();
                         match frontend_ir::convert_ast_to_ir("Main", &s, ast, &mut root) {
                             Ok(v) => v,
@@ -41,17 +61,31 @@ fn main() {
                             }
                         };
 
-                        println!("{}", root);
                         let _ = correctness::check_correctness(&mut root, true);
-                        println!("{}", root);
+                        if let ExecMode::Correctness = mode {
+                            println!("{}", root);
+                            return;
+                        } else if let ExecMode::All = mode {
+                            println!("{}", root);
+                        }
 
                         let mut module = backend_ir::convert_frontend_ir_to_backend_ir(root.modules.into_iter().next().unwrap().1);
-                        println!("{}", module);
+                        if let ExecMode::Ir = mode {
+                            println!("{}", module);
+                            return;
+                        } else if let ExecMode::All = mode {
+                            println!("{}", module);
+                        }
 
                         let mut code = codegen::generate_code(&mut module);
                         let map = MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable]).unwrap();
                         code.relocate(map.data());
-                        code.print_data();
+                        if let ExecMode::Codegen = mode {
+                            code.print_data();
+                            return;
+                        } else if let ExecMode::All = mode {
+                            code.print_data();
+                        }
 
                         unsafe {
                             std::ptr::copy(code.as_ptr(), map.data(), code.len());
