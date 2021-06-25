@@ -8,14 +8,14 @@ pub enum IrInstruction {
     Ret,
     Load,
     Apply,
-    Call(bool)
+    Call(bool),
 }
 
 impl Display for IrInstruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use IrInstruction::*;
         match self {
-            Ret  => write!(f, "ret" ),
+            Ret => write!(f, "ret"),
             Load => write!(f, "load"),
             Apply => write!(f, "apply"),
             Call(known_arity) => write!(f, "call{}", if *known_arity { "" } else { "?" }),
@@ -26,7 +26,7 @@ impl Display for IrInstruction {
 pub enum IrArgument {
     Local(usize),
     Argument(usize),
-    Function(String)
+    Function(String),
 }
 
 impl Display for IrArgument {
@@ -35,7 +35,7 @@ impl Display for IrArgument {
         match self {
             Local(l) => write!(f, "%{}", l),
             Argument(a) => write!(f, "${}", a),
-            Function(g) => write!(f, "@{}", g)
+            Function(g) => write!(f, "@{}", g),
         }
     }
 }
@@ -45,7 +45,7 @@ pub struct IrSsa {
     pub local_lifetime: usize,
     pub local_register: usize,
     pub instr: IrInstruction,
-    pub args: Vec<IrArgument>
+    pub args: Vec<IrArgument>,
 }
 
 impl Display for IrSsa {
@@ -65,7 +65,7 @@ impl Display for IrSsa {
 pub struct IrFunction {
     pub name: String,
     pub argc: usize,
-    pub ssas: Vec<IrSsa>
+    pub ssas: Vec<IrSsa>,
 }
 
 impl Display for IrFunction {
@@ -99,7 +99,7 @@ impl IrFunction {
 }
 
 pub struct IrModule {
-    pub funcs: Vec<IrFunction>
+    pub funcs: Vec<IrFunction>,
 }
 
 impl Display for IrModule {
@@ -111,7 +111,10 @@ impl Display for IrModule {
     }
 }
 
-fn get_arg_if_applicable(args_map: &HashMap<String, usize>, sexpr: SExpr) -> Result<IrArgument, SExpr> {
+fn get_arg_if_applicable(
+    args_map: &HashMap<String, usize>,
+    sexpr: SExpr,
+) -> Result<IrArgument, SExpr> {
     match sexpr {
         SExpr::Symbol(_, s) => {
             if let Some(a) = args_map.get(&s) {
@@ -121,15 +124,17 @@ fn get_arg_if_applicable(args_map: &HashMap<String, usize>, sexpr: SExpr) -> Res
             }
         }
 
-        SExpr::Function(_, f) => {
-            Ok(IrArgument::Function(f))
-        }
+        SExpr::Function(_, f) => Ok(IrArgument::Function(f)),
 
-        _ => Err(sexpr)
+        _ => Err(sexpr),
     }
 }
 
-fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, sexpr: SExpr) -> Option<usize> {
+fn conversion_helper(
+    args_map: &HashMap<String, usize>,
+    func: &mut IrFunction,
+    sexpr: SExpr,
+) -> Option<usize> {
     match get_arg_if_applicable(args_map, sexpr) {
         Ok(v) => {
             let local = Some(func.get_next_local());
@@ -138,7 +143,7 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                 local_lifetime: 0,
                 local_register: 0,
                 instr: IrInstruction::Load,
-                args: vec![v]
+                args: vec![v],
             });
             local
         }
@@ -160,14 +165,14 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
             let mut last_arity = f.get_metadata().arity;
             let mut f = match get_arg_if_applicable(args_map, *f) {
                 Ok(v) => v,
-                Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap())
+                Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
             };
             let mut args = vec![];
             let mut local = None;
             while let Some((arity, a)) = stack.pop() {
                 args.push(match get_arg_if_applicable(args_map, a) {
                     Ok(v) => v,
-                    Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap())
+                    Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
                 });
                 if arity == 0 {
                     use std::iter::once;
@@ -177,7 +182,7 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                         local_lifetime: 0,
                         local_register: 0,
                         instr: IrInstruction::Call(last_arity != 0),
-                        args: once(f).chain(args.into_iter()).collect()
+                        args: once(f).chain(args.into_iter()).collect(),
                     });
                     f = IrArgument::Local(local.unwrap());
                     args = vec![];
@@ -193,7 +198,7 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
                     local_lifetime: 0,
                     local_register: 0,
                     instr: IrInstruction::Apply,
-                    args: once(f).chain(args.into_iter()).collect()
+                    args: once(f).chain(args.into_iter()).collect(),
                 });
             }
 
@@ -204,7 +209,7 @@ fn conversion_helper(args_map: &HashMap<String, usize>, func: &mut IrFunction, s
         Err(SExpr::With(_, _, _)) => todo!(),
         Err(SExpr::Match(_, _, _)) => todo!(),
 
-        Err(SExpr::Symbol(_, _)) | Err(SExpr::Function(_, _)) => unreachable!()
+        Err(SExpr::Symbol(_, _)) | Err(SExpr::Function(_, _)) => unreachable!(),
     }
 }
 
@@ -244,9 +249,16 @@ pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
         let mut f = IrFunction {
             name: func.1.name,
             argc: func.1.args.len() + func.1.captured.len(),
-            ssas: vec![]
+            ssas: vec![],
         };
-        let args_map: HashMap<String, usize> = func.1.captured_names.into_iter().enumerate().chain(func.1.args.into_iter().map(|v| v.0).enumerate()).map(|v| (v.1, v.0)).collect();
+        let args_map: HashMap<String, usize> = func
+            .1
+            .captured_names
+            .into_iter()
+            .enumerate()
+            .chain(func.1.args.into_iter().map(|v| v.0).enumerate())
+            .map(|v| (v.1, v.0))
+            .collect();
 
         conversion_helper(&args_map, &mut f, func.1.body);
         f.ssas.push(IrSsa {
@@ -258,7 +270,7 @@ pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
                 vec![IrArgument::Local(l)]
             } else {
                 vec![]
-            }
+            },
         });
 
         calculate_lifetimes(&mut f);

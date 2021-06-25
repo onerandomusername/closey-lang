@@ -23,4 +23,3 @@ pub(crate) fn linear_scan(func: &mut IrFunction, register_count: usize) {
         }
     }
 }
-

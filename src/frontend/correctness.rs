@@ -4,8 +4,7 @@ use std::sync::Arc;
 use super::ir::{Ir, IrModule, Location, SExpr};
 use super::types::{arc, Type};
 
-pub enum CorrectnessError {
-}
+pub enum CorrectnessError {}
 
 fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<CorrectnessError>) {
     match sexpr {
@@ -32,7 +31,14 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<Correc
                     module.scope.push_scope(true);
 
                     for arg in func.args.iter() {
-                        module.scope.put_var(&arg.0, &arg.1, 0, &Location::empty(), true, &module.name);
+                        module.scope.put_var(
+                            &arg.0,
+                            &arg.1,
+                            0,
+                            &Location::empty(),
+                            true,
+                            &module.name,
+                        );
                     }
 
                     check_sexpr(&mut func.body, module, errors);
@@ -67,7 +73,10 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<Correc
             let ft = if let Type::Curried(_, f) = ft { f } else { ft };
             if let Type::Func(arg, ret) = ft {
                 let mut generics_map = HashMap::new();
-                if a.get_metadata()._type.is_subtype(arg, &module.types, &mut generics_map) {
+                if a.get_metadata()
+                    ._type
+                    .is_subtype(arg, &module.types, &mut generics_map)
+                {
                     m._type = ret.clone();
                     Arc::make_mut(&mut m._type).replace_generics(&generics_map);
 
@@ -85,7 +94,9 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<Correc
         SExpr::Assign(m, a, v) => {
             check_sexpr(v, module, errors);
             m._type = v.get_metadata()._type.clone();
-            module.scope.put_var(a, &m._type, m.arity, &m.loc, true, &module.name);
+            module
+                .scope
+                .put_var(a, &m._type, m.arity, &m.loc, true, &module.name);
         }
 
         SExpr::With(_, _, _) => todo!(),

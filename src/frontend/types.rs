@@ -147,7 +147,12 @@ impl Type {
 
     // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
-    pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, TypeRc>, generics_map: &mut HashMap<String, TypeRc>) -> bool {
+    pub fn is_subtype(
+        &self,
+        supertype: &Type,
+        types: &HashMap<String, TypeRc>,
+        generics_map: &mut HashMap<String, TypeRc>,
+    ) -> bool {
         let _type = self;
 
         if _type == supertype {
@@ -265,7 +270,7 @@ impl Type {
             | Type::Bool
             | Type::Word
             | Type::Char
-            | Type::Symbol(_) => { }
+            | Type::Symbol(_) => {}
         }
     }
 }
@@ -323,9 +328,7 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
         }
 
         // Generics
-        Ast::Generic(_, g) => {
-            Type::Generic(g)
-        }
+        Ast::Generic(_, g) => Type::Generic(g),
 
         // Sum types
         Ast::Infix(_, op, l, r) if op == "|" => {
@@ -365,9 +368,7 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
             if fields.len() == 1 {
                 (*fields.into_iter().next().unwrap().0).clone()
             } else {
-                Type::Union(HashSetWrapper(
-                    fields.into_iter().map(|v| v.0).collect()
-                ))
+                Type::Union(HashSetWrapper(fields.into_iter().map(|v| v.0).collect()))
             }
         }
 
@@ -413,11 +414,10 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
 }
 
 pub mod arc {
-    use std::sync::Arc;
     use super::Type;
+    use std::sync::Arc;
 
     pub fn new(t: Type) -> Arc<Type> {
         Arc::new(t)
     }
 }
-

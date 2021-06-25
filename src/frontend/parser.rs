@@ -1558,4 +1558,3 @@ pub fn parse(s: &str) -> Result<Vec<Ast>, ParseError> {
 
     Ok(lines)
 }
-

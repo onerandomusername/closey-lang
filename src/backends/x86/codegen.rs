@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use super::super::ir::{IrArgument, IrInstruction, IrModule};
 use super::super::common;
+use super::super::ir::{IrArgument, IrInstruction, IrModule};
 
 const ARG_REGISTER_COUNT: usize = 6;
 const NONARG_REGISTER_COUNT: usize = 8;
@@ -10,17 +10,15 @@ enum InstructionRegister {
     Bit32(u8),
     Bit64(u8),
     Spilled(usize),
-    Arg(usize)
+    Arg(usize),
 }
 
 impl InstructionRegister {
     fn is_register(&self) -> bool {
         match self {
-            Self::Bit32(_)
-                | Self::Bit64(_) => true,
+            Self::Bit32(_) | Self::Bit64(_) => true,
 
-            Self::Spilled(_)
-                | Self::Arg(_) => false
+            Self::Spilled(_) | Self::Arg(_) => false,
         }
     }
 
@@ -34,21 +32,18 @@ impl InstructionRegister {
 
     fn get_register(&self) -> u8 {
         match self {
-            Self::Bit32(r)
-                | Self::Bit64(r) => *r,
+            Self::Bit32(r) | Self::Bit64(r) => *r,
 
             Self::Spilled(_) => panic!("Spilled values are not registers!"),
-            Self::Arg(_) => panic!("Argument values are not registers!")
+            Self::Arg(_) => panic!("Argument values are not registers!"),
         }
     }
 
     fn get_offset(&self) -> usize {
         match self {
-            Self::Spilled(v)
-                | Self::Arg(v) => *v,
+            Self::Spilled(v) | Self::Arg(v) => *v,
 
-            Self::Bit32(_)
-                | Self::Bit64(_) => panic!("Register cannot be an offset!")
+            Self::Bit32(_) | Self::Bit64(_) => panic!("Register cannot be an offset!"),
         }
     }
 }
@@ -56,7 +51,7 @@ impl InstructionRegister {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 enum Register {
-    Rax,    // scratch and return register
+    Rax, // scratch and return register
     Rcx,
     Rdx,
     Rbx,
@@ -73,7 +68,7 @@ enum Register {
     R14,
     R15,
     Spilled(usize),
-    Arg(usize)
+    Arg(usize),
 }
 
 impl Register {
@@ -87,7 +82,7 @@ impl Register {
             3 => Rcx,
             4 => R8,
             5 => R9,
-            _ => Arg(id - ARG_REGISTER_COUNT + 1)
+            _ => Arg(id - ARG_REGISTER_COUNT + 1),
         }
     }
 
@@ -103,13 +98,13 @@ impl Register {
             5 => R13,
             6 => R14,
             7 => R15,
-            _ => Spilled(id - NONARG_REGISTER_COUNT + 1)
+            _ => Spilled(id - NONARG_REGISTER_COUNT + 1),
         }
     }
 
     fn convert_to_instr_arg(&self) -> InstructionRegister {
-        use Register::*;
         use InstructionRegister as IR;
+        use Register::*;
 
         match self {
             Rax => IR::Bit32(0),
@@ -120,8 +115,8 @@ impl Register {
             Rbp => IR::Bit32(5),
             Rsi => IR::Bit32(6),
             Rdi => IR::Bit32(7),
-            R8  => IR::Bit64(0),
-            R9  => IR::Bit64(1),
+            R8 => IR::Bit64(0),
+            R9 => IR::Bit64(1),
             R10 => IR::Bit64(2),
             R11 => IR::Bit64(3),
             R12 => IR::Bit64(4),
@@ -129,7 +124,7 @@ impl Register {
             R14 => IR::Bit64(6),
             R15 => IR::Bit64(7),
             Spilled(s) => IR::Spilled(*s),
-            Arg(s) => IR::Arg(*s)
+            Arg(s) => IR::Arg(*s),
         }
     }
 }
@@ -138,7 +133,7 @@ impl Register {
 pub struct GeneratedCode {
     pub(crate) func_addrs: HashMap<String, usize>,
     pub(crate) func_refs: HashMap<usize, (String, bool)>,
-    pub(crate) data: Vec<u8>
+    pub(crate) data: Vec<u8>,
 }
 
 impl GeneratedCode {
@@ -146,7 +141,7 @@ impl GeneratedCode {
         GeneratedCode {
             func_addrs: HashMap::new(),
             func_refs: HashMap::new(),
-            data: Vec::new()
+            data: Vec::new(),
         }
     }
 
@@ -218,8 +213,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         }
 
         // Put arity just before function
-        code.data.push((func.argc         & 0xff) as u8);
-        code.data.push(((func.argc >>  8) & 0xff) as u8);
+        code.data.push((func.argc & 0xff) as u8);
+        code.data.push(((func.argc >> 8) & 0xff) as u8);
         code.data.push(((func.argc >> 16) & 0xff) as u8);
         code.data.push(((func.argc >> 24) & 0xff) as u8);
         if std::mem::size_of::<usize>() == 8 {
@@ -260,7 +255,10 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         let mut local_to_register = HashMap::new();
         for ssa in func.ssas.iter() {
             if let Some(local) = ssa.local {
-                local_to_register.insert(local, Register::convert_nonarg_register_id(ssa.local_register));
+                local_to_register.insert(
+                    local,
+                    Register::convert_nonarg_register_id(ssa.local_register),
+                );
             }
 
             match ssa.instr {
@@ -268,7 +266,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
                         let register = local_to_register.get(arg).unwrap();
                         if *register != Register::Rax {
-                            let local_location = local_to_register.get(arg).unwrap().convert_to_instr_arg();
+                            let local_location =
+                                local_to_register.get(arg).unwrap().convert_to_instr_arg();
 
                             if local_location.is_register() {
                                 // mov rax, local_reg
@@ -282,9 +281,10 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 code.data.push(0x8b);
                                 code.data.push(0x85);
 
-                                let offset: u32 = (-(local_location.get_offset() as i32) * 8) as u32;
-                                code.data.push((offset         & 0xff) as u8);
-                                code.data.push(((offset >>  8) & 0xff) as u8);
+                                let offset: u32 =
+                                    (-(local_location.get_offset() as i32) * 8) as u32;
+                                code.data.push((offset & 0xff) as u8);
+                                code.data.push(((offset >> 8) & 0xff) as u8);
                                 code.data.push(((offset >> 16) & 0xff) as u8);
                                 code.data.push(((offset >> 24) & 0xff) as u8);
                             }
@@ -300,18 +300,28 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                 IrInstruction::Load => {
                     if let Some(local) = ssa.local {
-                        let local_location = local_to_register.get(&local).unwrap().convert_to_instr_arg();
+                        let local_location = local_to_register
+                            .get(&local)
+                            .unwrap()
+                            .convert_to_instr_arg();
 
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
-                                let arg_location = Register::convert_arg_register_id(*arg).convert_to_instr_arg();
+                                let arg_location =
+                                    Register::convert_arg_register_id(*arg).convert_to_instr_arg();
 
                                 // mov local, arg
                                 match (local_location.is_register(), arg_location.is_register()) {
                                     (true, true) => {
-                                        code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
+                                        code.data.push(
+                                            0x48 | arg_location.is_64_bit()
+                                                | (local_location.is_64_bit() << 2),
+                                        );
                                         code.data.push(0x89);
-                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register());
+                                        code.data.push(
+                                            0xc0 | (arg_location.get_register() << 3)
+                                                | local_location.get_register(),
+                                        );
                                     }
 
                                     (false, true) => {
@@ -323,11 +333,17 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                         // mov local, [rbp + offset]
                                         code.data.push(0x48 | (local_location.is_64_bit() << 2));
                                         code.data.push(0x8b);
-                                        code.data.push(0x80 | (local_location.get_register() << 3) | Register::Rbp.convert_to_instr_arg().get_register());
+                                        code.data.push(
+                                            0x80 | (local_location.get_register() << 3)
+                                                | Register::Rbp
+                                                    .convert_to_instr_arg()
+                                                    .get_register(),
+                                        );
 
-                                        let offset: u32 = ((arg_location.get_offset() as i32 + 2) * 8) as u32;
-                                        code.data.push((offset         & 0xff) as u8);
-                                        code.data.push(((offset >>  8) & 0xff) as u8);
+                                        let offset: u32 =
+                                            ((arg_location.get_offset() as i32 + 2) * 8) as u32;
+                                        code.data.push((offset & 0xff) as u8);
+                                        code.data.push(((offset >> 8) & 0xff) as u8);
                                         code.data.push(((offset >> 16) & 0xff) as u8);
                                         code.data.push(((offset >> 24) & 0xff) as u8);
                                     }
@@ -345,7 +361,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     code.data.push(0xb8 | local_location.get_register());
 
                                     // Insert the label
-                                    code.func_refs.insert(code.data.len(), (func.clone(), false));
+                                    code.func_refs
+                                        .insert(code.data.len(), (func.clone(), false));
 
                                     // Value
                                     for _ in 0..8 {
@@ -356,7 +373,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 }
                             }
 
-                            _ => ()
+                            _ => (),
                         }
                     }
                 }
@@ -387,4 +404,3 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
     code
 }
-

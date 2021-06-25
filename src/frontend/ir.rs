@@ -103,7 +103,6 @@ pub enum SExpr {
     // Chars
     Char(SExprMetadata, u8),
     */
-
     // Symbols
     Symbol(SExprMetadata, String),
 
@@ -114,7 +113,6 @@ pub enum SExpr {
     // Lists
     List(SExprMetadata, Vec<SExpr>),
     */
-
     // Functions
     Function(SExprMetadata, String),
 
@@ -136,7 +134,6 @@ pub enum SExpr {
 
     // Match expressions
     Match(SExprMetadata, Box<SExpr>, Vec<(TypeRc, SExpr, Location)>),
-
     // Member access
     // MemberAccess(SExprMetadata, Vec<String>),
 }
@@ -150,12 +147,13 @@ impl Display for SExpr {
             SExpr::Function(m, func) => write!(f, "func-get {}: {}", func, m._type),
             SExpr::ExternalFunc(_, _, _) => todo!(),
             SExpr::Chain(_, _, _) => todo!(),
-            SExpr::Application(_, func, arg) =>
+            SExpr::Application(_, func, arg) => {
                 if let SExpr::Application(_, _, _) = **func {
                     write!(f, "{} ({})", func, arg)
                 } else {
                     write!(f, "({}) ({})", func, arg)
                 }
+            }
 
             SExpr::Assign(m, v, a) => write!(f, "set {}: {} = ({})", v, m._type, a),
             SExpr::With(_, _, _) => todo!(),
@@ -313,7 +311,7 @@ impl Display for Ir {
 impl Default for Ir {
     fn default() -> Ir {
         Ir {
-            modules: HashMap::new()
+            modules: HashMap::new(),
         }
     }
 }
@@ -424,7 +422,6 @@ fn convert_node(
                 .collect(),
         ),
         */
-
         // Symbol
         Ast::Symbol(span, s) => SExpr::Symbol(
             SExprMetadata {
@@ -453,19 +450,9 @@ fn convert_node(
 
         // String
         /*
-        Ast::String(span, s) => {
-            let loc = Location::new(span, filename);
-            let mut cons = SExpr::Application(
-                SExprMetadata {
-                    loc: loc.clone(),
-                    loc2: Location::empty(),
-                    _type: arc::new(Type::Error),
-                    origin: String::with_capacity(0),
-                    arity: 0,
-                    tailrec: false,
-                    impure: false,
-                },
-                Box::new(SExpr::Application(
+            Ast::String(span, s) => {
+                let loc = Location::new(span, filename);
+                let mut cons = SExpr::Application(
                     SExprMetadata {
                         loc: loc.clone(),
                         loc2: Location::empty(),
@@ -475,7 +462,7 @@ fn convert_node(
                         tailrec: false,
                         impure: false,
                     },
-                    Box::new(SExpr::Symbol(
+                    Box::new(SExpr::Application(
                         SExprMetadata {
                             loc: loc.clone(),
                             loc2: Location::empty(),
@@ -485,7 +472,34 @@ fn convert_node(
                             tailrec: false,
                             impure: false,
                         },
-                        String::from("cons_S"),
+                        Box::new(SExpr::Symbol(
+                            SExprMetadata {
+                                loc: loc.clone(),
+                                loc2: Location::empty(),
+                                _type: arc::new(Type::Error),
+                                origin: String::with_capacity(0),
+                                arity: 0,
+                                tailrec: false,
+                                impure: false,
+                            },
+                            String::from("cons_S"),
+                        )),
+                        Box::new(SExpr::Char(
+                            SExprMetadata {
+                                loc: loc.clone(),
+                                loc2: Location::empty(),
+                                _type: arc::new(Type::Char),
+                                origin: String::with_capacity(0),
+                                arity: 0,
+                                tailrec: false,
+                                impure: false,
+                            },
+                            if s.is_empty() {
+                                0
+                            } else {
+                                s.bytes().last().unwrap()
+                            },
+                        )),
                     )),
                     Box::new(SExpr::Char(
                         SExprMetadata {
@@ -497,41 +511,14 @@ fn convert_node(
                             tailrec: false,
                             impure: false,
                         },
-                        if s.is_empty() {
-                            0
-                        } else {
-                            s.bytes().last().unwrap()
-                        },
+                        0,
                     )),
-                )),
-                Box::new(SExpr::Char(
-                    SExprMetadata {
-                        loc: loc.clone(),
-                        loc2: Location::empty(),
-                        _type: arc::new(Type::Char),
-                        origin: String::with_capacity(0),
-                        arity: 0,
-                        tailrec: false,
-                        impure: false,
-                    },
-                    0,
-                )),
-            );
-            if s.is_empty() {
-                cons
-            } else {
-                for c in s.bytes().rev().skip(1) {
-                    cons = SExpr::Application(
-                        SExprMetadata {
-                            loc: loc.clone(),
-                            loc2: Location::empty(),
-                            _type: arc::new(Type::Error),
-                            origin: String::with_capacity(0),
-                            arity: 0,
-                            tailrec: false,
-                            impure: false,
-                        },
-                        Box::new(SExpr::Application(
+                );
+                if s.is_empty() {
+                    cons
+                } else {
+                    for c in s.bytes().rev().skip(1) {
+                        cons = SExpr::Application(
                             SExprMetadata {
                                 loc: loc.clone(),
                                 loc2: Location::empty(),
@@ -541,7 +528,7 @@ fn convert_node(
                                 tailrec: false,
                                 impure: false,
                             },
-                            Box::new(SExpr::Symbol(
+                            Box::new(SExpr::Application(
                                 SExprMetadata {
                                     loc: loc.clone(),
                                     loc2: Location::empty(),
@@ -551,30 +538,38 @@ fn convert_node(
                                     tailrec: false,
                                     impure: false,
                                 },
-                                String::from("cons_S"),
+                                Box::new(SExpr::Symbol(
+                                    SExprMetadata {
+                                        loc: loc.clone(),
+                                        loc2: Location::empty(),
+                                        _type: arc::new(Type::Error),
+                                        origin: String::with_capacity(0),
+                                        arity: 0,
+                                        tailrec: false,
+                                        impure: false,
+                                    },
+                                    String::from("cons_S"),
+                                )),
+                                Box::new(SExpr::Char(
+                                    SExprMetadata {
+                                        loc: loc.clone(),
+                                        loc2: Location::empty(),
+                                        _type: arc::new(Type::Char),
+                                        origin: String::with_capacity(0),
+                                        arity: 0,
+                                        tailrec: false,
+                                        impure: false,
+                                    },
+                                    c,
+                                )),
                             )),
-                            Box::new(SExpr::Char(
-                                SExprMetadata {
-                                    loc: loc.clone(),
-                                    loc2: Location::empty(),
-                                    _type: arc::new(Type::Char),
-                                    origin: String::with_capacity(0),
-                                    arity: 0,
-                                    tailrec: false,
-                                    impure: false,
-                                },
-                                c,
-                            )),
-                        )),
-                        Box::new(cons),
-                    )
+                            Box::new(cons),
+                        )
+                    }
+                    cons
                 }
-                cons
             }
-        }
-    */
-
-
+        */
         // Infix
         Ast::Infix(span, op, l, r) => {
             if op == "$" {
@@ -942,7 +937,6 @@ fn convert_node(
             Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)),
         ),
         */
-
         Ast::Match(span, v, a) => SExpr::Match(
             SExprMetadata {
                 loc: Location::new(span, filename),
@@ -1055,9 +1049,10 @@ pub fn convert_ast_to_ir(
                         ));
                     } else {
                         // Add export to list of exports
-                        module
-                            .exports
-                            .insert(export.1, (Location::new(export.0, filename), arc::new(_type)));
+                        module.exports.insert(
+                            export.1,
+                            (Location::new(export.0, filename), arc::new(_type)),
+                        );
                     }
                 }
             }
@@ -1177,7 +1172,7 @@ pub fn convert_ast_to_ir(
                         extern_name: c,
                         arg_types,
                         ret_type,
-                        impure: matches!(purity, Purity::Default | Purity::Impure)
+                        impure: matches!(purity, Purity::Default | Purity::Impure),
                     },
                 );
             }
@@ -1290,7 +1285,11 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut Ir) -> Vec<IrError> {
             } else {
                 let _type = arc::new(types::convert_ast_to_type(export.4, filename));
                 if let Type::DuplicateTypeError(s1, s2, t) = &*_type {
-                    errors.push(IrError::DuplicateTypeInUnion(s1.clone(), s2.clone(), t.clone()));
+                    errors.push(IrError::DuplicateTypeInUnion(
+                        s1.clone(),
+                        s2.clone(),
+                        t.clone(),
+                    ));
 
                 // Check export is unique
                 } else {
@@ -1307,14 +1306,9 @@ pub fn convert_module(filename: &str, ast: Ast, ir: &mut Ir) -> Vec<IrError> {
                         Entry::Vacant(e) => {
                             // Add export to list of exports
                             let loc = Location::new(span, filename);
-                            module.scope.put_var(
-                                e.key(),
-                                &_type,
-                                arity,
-                                &loc,
-                                true,
-                                &module_name,
-                            );
+                            module
+                                .scope
+                                .put_var(e.key(), &_type, arity, &loc, true, &module_name);
                             let mut args = vec![];
                             let mut ret_type = _type.clone();
                             for i in 0..arity {

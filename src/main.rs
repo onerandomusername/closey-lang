@@ -1,22 +1,24 @@
-use mmap::{MemoryMap, MapOption::{MapExecutable, MapReadable, MapWritable}};
+use mmap::{
+    MapOption::{MapExecutable, MapReadable, MapWritable},
+    MemoryMap,
+};
 use std::env;
 use std::process::exit;
 
 use closeyc::backends::ir as backend_ir;
 use closeyc::backends::x86::codegen;
+use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
-use closeyc::frontend::correctness;
 
 pub static DEBUG: bool = false;
-
 
 enum ExecMode {
     Exec,
     Correctness,
     Ir,
     Codegen,
-    All
+    All,
 }
 
 fn main() {
@@ -28,78 +30,80 @@ fn main() {
             "build" => (),
             "check" => (),
 
-            "exec" => {
-                match args.next() {
-                    Some(s) => {
-                        let mode = if let Some(m) = args.next() {
-                            match m.as_str() {
-                                "analyse" | "analyze" => ExecMode::Correctness,
-                                "ir" => ExecMode::Ir,
-                                "codegen" => ExecMode::Codegen,
-                                "all" => ExecMode::All,
-                                _ => ExecMode::Exec
-                            }
-                        } else {
-                            ExecMode::Exec
-                        };
-
-                        let ast = match parser::parse(&s) {
-                            Ok(v) => v,
-
-                            Err(_) => {
-                                eprintln!("Error parsing!");
-                                exit(1);
-                            }
-                        };
-
-                        let mut root = Ir::default();
-                        match frontend_ir::convert_ast_to_ir("Main", &s, ast, &mut root) {
-                            Ok(v) => v,
-                            Err(_) => {
-                                eprintln!("Error creating ir!");
-                                exit(1);
-                            }
-                        };
-
-                        let _ = correctness::check_correctness(&mut root, true);
-                        if let ExecMode::Correctness = mode {
-                            println!("{}", root);
-                            return;
-                        } else if let ExecMode::All = mode {
-                            println!("{}", root);
+            "exec" => match args.next() {
+                Some(s) => {
+                    let mode = if let Some(m) = args.next() {
+                        match m.as_str() {
+                            "analyse" | "analyze" => ExecMode::Correctness,
+                            "ir" => ExecMode::Ir,
+                            "codegen" => ExecMode::Codegen,
+                            "all" => ExecMode::All,
+                            _ => ExecMode::Exec,
                         }
+                    } else {
+                        ExecMode::Exec
+                    };
 
-                        let mut module = backend_ir::convert_frontend_ir_to_backend_ir(root.modules.into_iter().next().unwrap().1);
-                        if let ExecMode::Ir = mode {
-                            println!("{}", module);
-                            return;
-                        } else if let ExecMode::All = mode {
-                            println!("{}", module);
-                        }
+                    let ast = match parser::parse(&s) {
+                        Ok(v) => v,
 
-                        let mut code = codegen::generate_code(&mut module);
-                        let map = MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable]).unwrap();
-                        code.relocate(map.data());
-                        if let ExecMode::Codegen = mode {
-                            code.print_data();
-                            return;
-                        } else if let ExecMode::All = mode {
-                            code.print_data();
+                        Err(_) => {
+                            eprintln!("Error parsing!");
+                            exit(1);
                         }
+                    };
 
-                        unsafe {
-                            std::ptr::copy(code.as_ptr(), map.data(), code.len());
-                            let exec = code.get_fn("main", map.data()).unwrap();
-                            println!("{:#x}", exec());
+                    let mut root = Ir::default();
+                    match frontend_ir::convert_ast_to_ir("Main", &s, ast, &mut root) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            eprintln!("Error creating ir!");
+                            exit(1);
                         }
+                    };
+
+                    let _ = correctness::check_correctness(&mut root, true);
+                    if let ExecMode::Correctness = mode {
+                        println!("{}", root);
+                        return;
+                    } else if let ExecMode::All = mode {
+                        println!("{}", root);
                     }
 
-                    None => {
-                        eprintln!("Must provide command with exec");
-                        exit(1);
+                    let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
+                        root.modules.into_iter().next().unwrap().1,
+                    );
+                    if let ExecMode::Ir = mode {
+                        println!("{}", module);
+                        return;
+                    } else if let ExecMode::All = mode {
+                        println!("{}", module);
+                    }
+
+                    let mut code = codegen::generate_code(&mut module);
+                    let map =
+                        MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable])
+                            .unwrap();
+                    code.relocate(map.data());
+                    if let ExecMode::Codegen = mode {
+                        code.print_data();
+                        return;
+                    } else if let ExecMode::All = mode {
+                        code.print_data();
+                    }
+
+                    unsafe {
+                        std::ptr::copy(code.as_ptr(), map.data(), code.len());
+                        let exec = code.get_fn("main", map.data()).unwrap();
+                        println!("{:#x}", exec());
                     }
                 }
-            }
+
+                None => {
+                    eprintln!("Must provide command with exec");
+                    exit(1);
+                }
+            },
 
             "help" => {
                 println!(
@@ -127,4 +131,3 @@ fn main() {
         todo!("repl");
     }
 }
-

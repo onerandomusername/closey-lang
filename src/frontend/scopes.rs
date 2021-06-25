@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::ir::Location;
-use super::types::{TypeRc};
+use super::types::TypeRc;
 
 #[derive(Debug, Default)]
 pub struct Scope {
@@ -61,10 +61,7 @@ impl Scope {
 
     // get_var(&self, &str) -> Option<&(Type, usize, Location, bool, String)>
     // Gets a variable from the stack of scopes.
-    pub fn get_var(
-        &self,
-        name: &str,
-    ) -> Option<&(TypeRc, usize, Location, bool, String)> {
+    pub fn get_var(&self, name: &str) -> Option<&(TypeRc, usize, Location, bool, String)> {
         // Set up
         let name = String::from(name);
         let mut scope = self;
@@ -141,4 +138,3 @@ impl Scope {
         }
     }
 }
-
