@@ -122,7 +122,7 @@ fn get_arg_if_applicable(args_map: &HashMap<String, usize>, sexpr: SExpr) -> Res
         }
 
         SExpr::Function(_, f) => {
-            Ok(IrArgument::Function(f.clone()))
+            Ok(IrArgument::Function(f))
         }
 
         _ => Err(sexpr)
