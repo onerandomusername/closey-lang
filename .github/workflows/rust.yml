@@ -16,9 +16,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-latest]
-    env:
-      CC: gcc
-      USE_LTO: 1 
     runs-on: ${{ matrix.os }}
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
@@ -35,6 +32,8 @@ jobs:
         
     - name: Set tag
       if: ${{ matrix.os == 'ubuntu-latest' }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
