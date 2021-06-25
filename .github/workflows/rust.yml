@@ -30,7 +30,7 @@ jobs:
       
     - name: Build asset
       run: |
-        strip target/release/closeyc*
+        strip target/release/closeyc
         7z a closeyc-nightly.zip target/release/closeyc*
         
     - name: Set tag
