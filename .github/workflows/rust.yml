@@ -1,0 +1,52 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  nightly:
+    name: Deploy nightly
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest]
+    runs-on: ${{ matrix.os }}
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Build
+      run: cargo build --release --verbose
+      
+    - name: Build asset
+      run: |
+        strip ./target/release/closeyc
+        7z a ./closeyc-nightly.zip ./target/release/closeyc
+        
+    - name: Set tag
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git tag -f -a nightly -m "Nightly update"
+        git push origin -f --follow-tags nightly
+    - name: Deploy release
+      uses: WebFreak001/deploy-nightly@v1.1.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: https://uploads.github.com/repos/jenra-uwu/closey-lang/releases/45233280/assets{?name,label}
+        release_id: 45233280 # same as above (id can just be taken out the upload_url, it's used to find old releases)
+        asset_path: ./closeyc-nightly.zip # path to archive to upload
+        asset_name: closeyc-nightly-${{matrix.os}}-$$.zip # name to upload the release as, use $$ to insert date (YYYYMMDD) and 6 letter commit hash
+        asset_content_type: application/zip # required by GitHub API
+        max_releases: 1 # optional, if there are more releases than this matching the asset_name, the oldest ones are going to be deleted
