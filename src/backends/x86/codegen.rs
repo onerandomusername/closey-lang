@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use super::super::ir::{IrArgument, IrInstruction, IrModule};
-use super::super::common::{self, GeneratedCode};
+use super::super::common;
 
 const ARG_REGISTER_COUNT: usize = 6;
-const NONARG_REGISTER_COUNT: usize = 9;
+const NONARG_REGISTER_COUNT: usize = 8;
 
 enum InstructionRegister {
     Bit32(u8),
@@ -54,15 +54,16 @@ impl InstructionRegister {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 enum Register {
-    RAX,
-    RCX,
-    RDX,
-    RBX,
-    RSP,
-    RBP,
-    RSI,
-    RDI,
+    Rax,    // scratch and return register
+    Rcx,
+    Rdx,
+    Rbx,
+    Rsp,
+    Rbp,
+    Rsi,
+    Rdi,
     R8,
     R9,
     R10,
@@ -80,10 +81,10 @@ impl Register {
         use Register::*;
 
         match id {
-            0 => RDI,
-            1 => RSI,
-            2 => RDX,
-            3 => RCX,
+            0 => Rdi,
+            1 => Rsi,
+            2 => Rdx,
+            3 => Rcx,
             4 => R8,
             5 => R9,
             _ => Arg(id - ARG_REGISTER_COUNT + 1)
@@ -94,15 +95,14 @@ impl Register {
         use Register::*;
 
         match id {
-            0 => RAX,
-            1 => RDI,
-            2 => RSI,
-            3 => RDX,
-            4 => RCX,
-            5 => R8,
-            6 => R9,
-            7 => R10,
-            8 => R11,
+            0 => Rbx,
+            1 => Rdx,
+            2 => R10,
+            3 => R11,
+            4 => R12,
+            5 => R13,
+            6 => R14,
+            7 => R15,
             _ => Spilled(id - NONARG_REGISTER_COUNT + 1)
         }
     }
@@ -112,14 +112,14 @@ impl Register {
         use InstructionRegister as IR;
 
         match self {
-            RAX => IR::Bit32(0),
-            RCX => IR::Bit32(1),
-            RDX => IR::Bit32(2),
-            RBX => IR::Bit32(3),
-            RSP => IR::Bit32(4),
-            RBP => IR::Bit32(5),
-            RSI => IR::Bit32(6),
-            RDI => IR::Bit32(7),
+            Rax => IR::Bit32(0),
+            Rcx => IR::Bit32(1),
+            Rdx => IR::Bit32(2),
+            Rbx => IR::Bit32(3),
+            Rsp => IR::Bit32(4),
+            Rbp => IR::Bit32(5),
+            Rsi => IR::Bit32(6),
+            Rdi => IR::Bit32(7),
             R8  => IR::Bit64(0),
             R9  => IR::Bit64(1),
             R10 => IR::Bit64(2),
@@ -130,6 +130,80 @@ impl Register {
             R15 => IR::Bit64(7),
             Spilled(s) => IR::Spilled(*s),
             Arg(s) => IR::Arg(*s)
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct GeneratedCode {
+    pub(crate) func_addrs: HashMap<String, usize>,
+    pub(crate) func_refs: HashMap<usize, (String, bool)>,
+    pub(crate) data: Vec<u8>
+}
+
+impl GeneratedCode {
+    fn new() -> GeneratedCode {
+        GeneratedCode {
+            func_addrs: HashMap::new(),
+            func_refs: HashMap::new(),
+            data: Vec::new()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.data.as_ptr()
+    }
+
+    pub fn relocate(&mut self, base: *const u8) {
+        for (code_addr, (func, relative)) in self.func_refs.iter() {
+            if let Some(offset) = self.func_addrs.get(func) {
+                let (addr, byte_count) = if *relative {
+                    ((*offset as i32 - *code_addr as i32 - 4) as usize, 4)
+                } else {
+                    (base as usize + *offset, 8)
+                };
+
+                for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
+                    if i >= byte_count {
+                        break;
+                    }
+
+                    *byte = ((addr >> (i * 8)) & 0xff) as u8;
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    pub unsafe fn get_fn(&self, func: &str, base: *const u8) -> Option<extern "C" fn() -> u64> {
+        if let Some(f) = self.func_addrs.get(func) {
+            use std::mem::transmute;
+            Some(transmute(base.add(*f)))
+        } else {
+            None
+        }
+    }
+
+    pub fn print_data(&self) {
+        let mut i = 0;
+        for c in self.data.iter() {
+            print!("{:02x} ", c);
+            i += 1;
+            if i >= 16 {
+                i = 0;
+                println!();
+            }
+        }
+        if i != 0 {
+            println!();
         }
     }
 }
@@ -193,7 +267,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 IrInstruction::Ret => {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
                         let register = local_to_register.get(arg).unwrap();
-                        if *register != Register::RAX {
+                        if *register != Register::Rax {
                             let local_location = local_to_register.get(arg).unwrap().convert_to_instr_arg();
 
                             if local_location.is_register() {
@@ -249,7 +323,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                         // mov local, [rbp + offset]
                                         code.data.push(0x48 | (local_location.is_64_bit() << 2));
                                         code.data.push(0x8b);
-                                        code.data.push(0x80 | (local_location.get_register() << 3) | Register::RBP.convert_to_instr_arg().get_register());
+                                        code.data.push(0x80 | (local_location.get_register() << 3) | Register::Rbp.convert_to_instr_arg().get_register());
 
                                         let offset: u32 = ((arg_location.get_offset() as i32 + 2) * 8) as u32;
                                         code.data.push((offset         & 0xff) as u8);
@@ -271,7 +345,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     code.data.push(0xb8 | local_location.get_register());
 
                                     // Insert the label
-                                    code.func_refs.insert(code.data.len(), func.clone());
+                                    code.func_refs.insert(code.data.len(), (func.clone(), false));
 
                                     // Value
                                     for _ in 0..8 {
