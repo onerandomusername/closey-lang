@@ -6,7 +6,7 @@ use std::env;
 use std::process::exit;
 
 use closeyc::backends::ir as backend_ir;
-use closeyc::backends::x86::codegen;
+use closeyc::backends::x86_64::codegen;
 use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
