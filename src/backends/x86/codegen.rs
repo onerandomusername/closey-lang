@@ -50,7 +50,6 @@ impl InstructionRegister {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
 enum Register {
     Rax, // scratch and return register
     Rcx,
@@ -217,7 +216,7 @@ impl GeneratedCode {
         for (name, range) in self.func_addrs.iter() {
             println!("\n{}({}):", name, unsafe { *(self.data.as_ptr().add(range.start - 16) as *const usize) });
             let bytes = &self.data[range.start..range.end];
-            let mut decoder = Decoder::with_ip(64, bytes, base as u64, DecoderOptions::NONE);
+            let mut decoder = Decoder::with_ip(64, bytes, base as u64 + range.start as u64, DecoderOptions::NONE);
 
             let mut formatter = NasmFormatter::new();
 
@@ -234,7 +233,7 @@ impl GeneratedCode {
 
                 print!("{:016X}\n    ", instruction.ip());
                 let start_index = instruction.ip() as usize - base as usize;
-                let instr_bytes = &bytes[start_index..start_index + instruction.len()];
+                let instr_bytes = &self.data[start_index..start_index + instruction.len()];
                 for b in instr_bytes.iter() {
                     print!("{:02X}", b);
                 }
@@ -244,6 +243,68 @@ impl GeneratedCode {
                     }
                 }
                 println!(" {}", output);
+            }
+        }
+    }
+
+    fn generate_mov(&mut self, dest: Register, source: Register) {
+        let dest_location = dest.convert_to_instr_arg();
+        let source_location = source.convert_to_instr_arg();
+
+        match (dest_location.is_register(), source_location.is_register()) {
+            (true, true) => {
+                // mov dest_reg, source_reg
+                self.data.push(0x48 | dest_location.is_64_bit() | (source_location.is_64_bit() << 2));
+                self.data.push(0x89);
+                self.data.push(0xc0 | dest_location.get_register() | (source_location.get_register() << 3));
+            }
+
+            (true, false) => {
+                // mov rax, [rbp +- offset]
+                self.data.push(0x48 | (dest_location.is_64_bit() << 2));
+                self.data.push(0x8b);
+                self.data.push(0x85 | (dest_location.get_register() << 3));
+
+                let offset = if let InstructionRegister::Arg(a) = source_location {
+                    (a as u32 + 2) * 8
+                } else if let InstructionRegister::Spilled(s) = source_location {
+                    (-(s as i32 + 1) * 8) as u32
+                } else {
+                    unreachable!();
+                };
+
+                self.data.push((offset         & 0xff) as u8);
+                self.data.push(((offset >>  8) & 0xff) as u8);
+                self.data.push(((offset >> 16) & 0xff) as u8);
+                self.data.push(((offset >> 24) & 0xff) as u8);
+            }
+
+            (false, true) => {
+                // mov [rbp +- offset], rax
+                self.data.push(0x48 | (source_location.is_64_bit() << 2));
+                self.data.push(0x89);
+                self.data.push(0x85 | (source_location.get_register() << 3));
+
+                let offset = if let InstructionRegister::Arg(a) = dest_location {
+                    (a as u32 + 2) * 8
+                } else if let InstructionRegister::Spilled(s) = dest_location {
+                    (-(s as i32 + 1) * 8) as u32
+                } else {
+                    unreachable!();
+                };
+
+                self.data.push((offset         & 0xff) as u8);
+                self.data.push(((offset >>  8) & 0xff) as u8);
+                self.data.push(((offset >> 16) & 0xff) as u8);
+                self.data.push(((offset >> 24) & 0xff) as u8);
+            }
+
+            (false, false) => {
+                // mov rax, [rbp +- offset]
+                self.generate_mov(Register::Rax, source);
+
+                // mov [rbp +- offset], rax
+                self.generate_mov(dest, Register::Rax);
             }
         }
     }
@@ -292,9 +353,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         code.data.push(0x55);
 
         // mov rbp, rsp
-        code.data.push(0x48);
-        code.data.push(0x89);
-        code.data.push(0xe5);
+        code.generate_mov(Register::Rbp, Register::Rsp);
 
         common::linear_scan(func, NONARG_REGISTER_COUNT);
 
@@ -306,6 +365,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         }
 
         // Push used registers
+        let used_registers: Vec<_> = used_registers.into_iter().collect();
         for register in used_registers.iter() {
             let register = Register::convert_nonarg_register_id(*register).convert_to_instr_arg();
             if register.is_64_bit() != 0 {
@@ -314,9 +374,9 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
             code.data.push(0x50 | register.get_register());
         }
 
-
         let mut local_to_register = HashMap::new();
         let mut register_lifetimes = vec![0; NONARG_REGISTER_COUNT];
+        let mut stack_allocated_local_count = 0usize;
         for ssa in func.ssas.iter() {
             for lifetime in register_lifetimes.iter_mut() {
                 if *lifetime != 0 {
@@ -343,35 +403,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 IrInstruction::Ret => {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
                         let register = local_to_register.get(arg).unwrap();
-                        if *register != Register::Rax {
-                            let local_location =
-                                local_to_register.get(arg).unwrap().convert_to_instr_arg();
-
-                            if local_location.is_register() {
-                                // mov rax, local_reg
-                                code.data.push(0x48 | local_location.is_64_bit());
-                                code.data.push(0x89);
-                                code.data.push(0xc0 | (local_location.get_register() << 3));
-                            } else {
-                                // TODO: check this (im pretty sure its correct though)
-                                // mov rax, [rbp + offset]
-                                code.data.push(0x48);
-                                code.data.push(0x8b);
-                                code.data.push(0x85);
-
-                                let offset: u32 =
-                                    (-(local_location.get_offset() as i32) * 8) as u32;
-                                code.data.push((offset & 0xff) as u8);
-                                code.data.push(((offset >> 8) & 0xff) as u8);
-                                code.data.push(((offset >> 16) & 0xff) as u8);
-                                code.data.push(((offset >> 24) & 0xff) as u8);
-                            }
-                        }
+                        code.generate_mov(Register::Rax, *register);
                     }
 
 
                     // Pop used registers
-                    for register in used_registers.iter() {
+                    for register in used_registers.iter().rev() {
                         let register = Register::convert_nonarg_register_id(*register).convert_to_instr_arg();
                         if register.is_64_bit() != 0 {
                             code.data.push(0x41);
@@ -380,9 +417,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     }
 
                     // mov rsp, rbp
-                    code.data.push(0x48);
-                    code.data.push(0x89);
-                    code.data.push(0xec);
+                    code.generate_mov(Register::Rsp, Register::Rbp);
 
                     // pop rbp
                     code.data.push(0x5d);
@@ -393,61 +428,16 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                 IrInstruction::Load => {
                     if let Some(local) = ssa.local {
-                        let local_location = local_to_register
+                        let local_reg = *local_to_register
                             .get(&local)
-                            .unwrap()
-                            .convert_to_instr_arg();
+                            .unwrap();
+                        let local_location = local_reg.convert_to_instr_arg();
 
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
+                                code.generate_mov(local_reg, Register::convert_arg_register_id(*arg));
                                 let arg_location =
                                     Register::convert_arg_register_id(*arg).convert_to_instr_arg();
-
-                                match (local_location.is_register(), arg_location.is_register()) {
-                                    (true, true) => {
-                                        // mov local, arg
-                                        code.data.push(
-                                            0x48 | arg_location.is_64_bit()
-                                                | (local_location.is_64_bit() << 2),
-                                        );
-                                        code.data.push(0x89);
-                                        code.data.push(
-                                            0xc0 | (arg_location.get_register() << 3)
-                                                | local_location.get_register(),
-                                        );
-                                    }
-
-                                    (false, true) => {
-                                        // mov [rbp - offset], arg
-                                        todo!();
-                                    }
-
-                                    (true, false) => {
-                                        // TODO: check this (im pretty sure its correct though)
-                                        // mov local, [rbp + offset]
-                                        code.data.push(0x48 | (local_location.is_64_bit() << 2));
-                                        code.data.push(0x8b);
-                                        code.data.push(
-                                            0x80 | (local_location.get_register() << 3)
-                                                | Register::Rbp
-                                                    .convert_to_instr_arg()
-                                                    .get_register(),
-                                        );
-
-                                        let offset: u32 =
-                                            ((arg_location.get_offset() as i32 + 2) * 8) as u32;
-                                        code.data.push((offset & 0xff) as u8);
-                                        code.data.push(((offset >> 8) & 0xff) as u8);
-                                        code.data.push(((offset >> 16) & 0xff) as u8);
-                                        code.data.push(((offset >> 24) & 0xff) as u8);
-                                    }
-
-                                    (false, false) => {
-                                        // mov rax, [rbp + offset]
-                                        // mov [rbp - offset], rax
-                                        todo!();
-                                    }
-                                }
                             }
 
                             Some(IrArgument::Function(func)) => {
@@ -465,7 +455,28 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                         code.data.push(0);
                                     }
                                 } else {
-                                    todo!();
+                                    // mov rax, func
+                                    code.data.push(0x48);
+                                    code.data.push(0xb8);
+
+                                    // Insert the label
+                                    code.func_refs
+                                        .insert(code.data.len(), (func.clone(), false));
+
+                                    // Value
+                                    for _ in 0..8 {
+                                        code.data.push(0);
+                                    }
+
+                                    if local_location.get_offset() >= stack_allocated_local_count {
+                                        stack_allocated_local_count += 1;
+
+                                        // push rax
+                                        code.data.push(0x50);
+                                    } else {
+                                        // mov [rbp - offset], rax
+                                        code.generate_mov(local_reg, Register::Rax);
+                                    }
                                 }
                             }
 
@@ -500,33 +511,22 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     if known_arity {
                         // First 6 arguments are stored in registers
                         for (i, arg) in ssa.args.iter().skip(1).enumerate() {
-                            let arg_location = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                            let arg_reg = Register::convert_arg_register_id(i);
+                            let arg_location = arg_reg.convert_to_instr_arg();
 
                             match arg {
                                 IrArgument::Local(local) => {
-                                    let local_location = local_to_register.get(local).unwrap().convert_to_instr_arg();
+                                    let local_reg = *local_to_register.get(local).unwrap();
 
-                                    if local_location.is_register() {
-                                        // mov arg, local
-                                        code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
-                                        code.data.push(0x8b);
-                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register());
-                                    } else {
-                                        todo!();
-                                    }
+                                    // mov arg, local
+                                    code.generate_mov(arg_reg, local_reg);
                                 }
 
                                 IrArgument::Argument(arg) => {
-                                    let local_location = Register::convert_arg_register_id(*arg).convert_to_instr_arg();
+                                    let local_reg = Register::convert_arg_register_id(*arg);
 
-                                    if local_location.is_register() {
-                                        // mov arg, local
-                                        code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
-                                        code.data.push(0x8b);
-                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register())
-                                    } else {
-                                        todo!();
-                                    }
+                                    // mov arg, local
+                                    code.generate_mov(arg_reg, local_reg);
                                 }
 
                                 IrArgument::Function(func) => {
@@ -553,7 +553,26 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         // Rest of the registers are stored on the stack
                         for arg in ssa.args.iter().skip(ARG_REGISTER_COUNT + 1).rev() {
                             match arg {
-                                IrArgument::Local(_) => todo!(),
+                                IrArgument::Local(local) => {
+                                    let local_reg = *local_to_register.get(local).unwrap();
+                                    let local_location = local_reg.convert_to_instr_arg();
+
+
+                                    if local_location.is_register() {
+                                        // push local
+                                        if local_location.is_64_bit() != 0 {
+                                            code.data.push(0x41);
+                                        }
+                                        code.data.push(0x50 | local_location.get_register());
+                                    } else {
+                                        // mov rax, [rbp - offset]
+                                        code.generate_mov(Register::Rax, local_reg);
+
+                                        // push rax
+                                        code.data.push(0x50);
+                                    }
+                                }
+
                                 IrArgument::Argument(_) => todo!(),
 
                                 IrArgument::Function(func) => {
@@ -593,45 +612,47 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 }
                             }
                         }
-
-                        if let Some(local) = ssa.local {
-                            let local_location = Register::convert_nonarg_register_id(local)
-                                .convert_to_instr_arg();
-
-                            if local_location.is_register() {
-                                // mov local, rax
-                                code.data.push(0x48 | local_location.is_64_bit());
-                                code.data.push(0x8b);
-                                code.data.push(
-                                    0xc0 | (local_location.get_register() << 3)
-                                        | Register::Rax.convert_to_instr_arg().get_register(),
-                                );
-                            } else {
-                                todo!();
-                            }
-                        }
                     } else {
                         todo!();
                     }
 
-                    // Pop arguments
-                    for (i, _) in ssa.args.iter().skip(1).zip(0..func.argc).enumerate().rev() {
-                        let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
-                        if !reg.is_register() {
-                            continue;
-                        }
-
-                        if reg.is_64_bit() != 0 {
-                            code.data.push(0x41);
-                        }
-
-                        code.data.push(0x58 | reg.get_register());
+                    // Pop arguments passed into the function and arguments saved
+                    let mut pop_count = ssa.args.len() - 1 + std::cmp::min(std::cmp::min(func.argc, ARG_REGISTER_COUNT), ssa.args.len() - 1);
+                    if pop_count > ARG_REGISTER_COUNT {
+                        pop_count -= ARG_REGISTER_COUNT;
+                    } else {
+                        pop_count = 0;
+                    }
+                    pop_count *= 8;
+                    if pop_count != 0 {
+                        // sub rsp, pop_count
+                        code.data.push(0x48);
+                        code.data.push(0x81);
+                        code.data.push(0xec);
+                        code.data.push((pop_count         & 0xff) as u8);
+                        code.data.push(((pop_count >>  8) & 0xff) as u8);
+                        code.data.push(((pop_count >> 16) & 0xff) as u8);
+                        code.data.push(((pop_count >> 24) & 0xff) as u8);
                     }
 
                     if register_lifetimes[Register::R11.revert_to_nonarg_register_id()] != 0 {
                         // pop r11
                         code.data.push(0x41);
                         code.data.push(0x5b);
+                    }
+
+                    if let Some(local) = ssa.local {
+                        let local_reg = Register::convert_nonarg_register_id(local);
+                        let local_location = local_reg.convert_to_instr_arg();
+
+                        if !local_location.is_register() && local_location.get_offset() >= stack_allocated_local_count {
+                            stack_allocated_local_count += 1;
+
+                            // push rax
+                            code.data.push(0x50);
+                        } else {
+                            code.generate_mov(local_reg, Register::Rax);
+                        }
                     }
                 }
             }
