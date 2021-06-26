@@ -115,7 +115,7 @@ impl Register {
             R14 => 6,
             R15 => 7,
             Spilled(id) => id + NONARG_REGISTER_COUNT,
-            _ => panic!("Arguments are not not arguments!")
+            _ => panic!("Arguments are not not arguments!"),
         }
     }
 
@@ -214,9 +214,16 @@ impl GeneratedCode {
         use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
 
         for (name, range) in self.func_addrs.iter() {
-            println!("\n{}({}):", name, unsafe { *(self.data.as_ptr().add(range.start - 16) as *const usize) });
+            println!("\n{}({}):", name, unsafe {
+                *(self.data.as_ptr().add(range.start - 16) as *const usize)
+            });
             let bytes = &self.data[range.start..range.end];
-            let mut decoder = Decoder::with_ip(64, bytes, base as u64 + range.start as u64, DecoderOptions::NONE);
+            let mut decoder = Decoder::with_ip(
+                64,
+                bytes,
+                base as u64 + range.start as u64,
+                DecoderOptions::NONE,
+            );
 
             let mut formatter = NasmFormatter::new();
 
@@ -254,9 +261,12 @@ impl GeneratedCode {
         match (dest_location.is_register(), source_location.is_register()) {
             (true, true) => {
                 // mov dest_reg, source_reg
-                self.data.push(0x48 | dest_location.is_64_bit() | (source_location.is_64_bit() << 2));
+                self.data
+                    .push(0x48 | dest_location.is_64_bit() | (source_location.is_64_bit() << 2));
                 self.data.push(0x89);
-                self.data.push(0xc0 | dest_location.get_register() | (source_location.get_register() << 3));
+                self.data.push(
+                    0xc0 | dest_location.get_register() | (source_location.get_register() << 3),
+                );
             }
 
             (true, false) => {
@@ -273,8 +283,8 @@ impl GeneratedCode {
                     unreachable!();
                 };
 
-                self.data.push((offset         & 0xff) as u8);
-                self.data.push(((offset >>  8) & 0xff) as u8);
+                self.data.push((offset & 0xff) as u8);
+                self.data.push(((offset >> 8) & 0xff) as u8);
                 self.data.push(((offset >> 16) & 0xff) as u8);
                 self.data.push(((offset >> 24) & 0xff) as u8);
             }
@@ -293,8 +303,8 @@ impl GeneratedCode {
                     unreachable!();
                 };
 
-                self.data.push((offset         & 0xff) as u8);
-                self.data.push(((offset >>  8) & 0xff) as u8);
+                self.data.push((offset & 0xff) as u8);
+                self.data.push(((offset >> 8) & 0xff) as u8);
                 self.data.push(((offset >> 16) & 0xff) as u8);
                 self.data.push(((offset >> 24) & 0xff) as u8);
             }
@@ -347,7 +357,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         code.data.push(0);
 
         // Add function
-        code.func_addrs.insert(func.name.clone(), code.len()..code.len() + 1);
+        code.func_addrs
+            .insert(func.name.clone(), code.len()..code.len() + 1);
 
         // push rbp
         code.data.push(0x55);
@@ -359,7 +370,10 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
         let mut used_registers = HashSet::new();
         for ssa in func.ssas.iter() {
-            if ssa.local.is_some() && Register::convert_nonarg_register_id(ssa.local_register).is_callee_saved() && !used_registers.contains(&ssa.local_register) {
+            if ssa.local.is_some()
+                && Register::convert_nonarg_register_id(ssa.local_register).is_callee_saved()
+                && !used_registers.contains(&ssa.local_register)
+            {
                 used_registers.insert(ssa.local_register);
             }
         }
@@ -393,10 +407,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     register_lifetimes.push(ssa.local_lifetime);
                 }
 
-                local_to_register.insert(
-                    local,
-                    register
-                );
+                local_to_register.insert(local, register);
             }
 
             match ssa.instr {
@@ -406,10 +417,10 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         code.generate_mov(Register::Rax, *register);
                     }
 
-
                     // Pop used registers
                     for register in used_registers.iter().rev() {
-                        let register = Register::convert_nonarg_register_id(*register).convert_to_instr_arg();
+                        let register =
+                            Register::convert_nonarg_register_id(*register).convert_to_instr_arg();
                         if register.is_64_bit() != 0 {
                             code.data.push(0x41);
                         }
@@ -428,15 +439,16 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                 IrInstruction::Load => {
                     if let Some(local) = ssa.local {
-                        let local_reg = *local_to_register
-                            .get(&local)
-                            .unwrap();
+                        let local_reg = *local_to_register.get(&local).unwrap();
                         let local_location = local_reg.convert_to_instr_arg();
 
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
                                 // mov local, [rbp + offset]
-                                code.generate_mov(local_reg, Register::convert_arg_register_id(*arg));
+                                code.generate_mov(
+                                    local_reg,
+                                    Register::convert_arg_register_id(*arg),
+                                );
                             }
 
                             Some(IrArgument::Function(func)) => {
@@ -556,7 +568,6 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     let local_reg = *local_to_register.get(local).unwrap();
                                     let local_location = local_reg.convert_to_instr_arg();
 
-
                                     if local_location.is_register() {
                                         // push local
                                         if local_location.is_64_bit() != 0 {
@@ -616,7 +627,11 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     }
 
                     // Pop arguments passed into the function and arguments saved
-                    let mut pop_count = ssa.args.len() - 1 + std::cmp::min(std::cmp::min(func.argc, ARG_REGISTER_COUNT), ssa.args.len() - 1);
+                    let mut pop_count = ssa.args.len() - 1
+                        + std::cmp::min(
+                            std::cmp::min(func.argc, ARG_REGISTER_COUNT),
+                            ssa.args.len() - 1,
+                        );
                     if pop_count > ARG_REGISTER_COUNT {
                         pop_count -= ARG_REGISTER_COUNT;
                     } else {
@@ -628,8 +643,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         code.data.push(0x48);
                         code.data.push(0x81);
                         code.data.push(0xec);
-                        code.data.push((pop_count         & 0xff) as u8);
-                        code.data.push(((pop_count >>  8) & 0xff) as u8);
+                        code.data.push((pop_count & 0xff) as u8);
+                        code.data.push(((pop_count >> 8) & 0xff) as u8);
                         code.data.push(((pop_count >> 16) & 0xff) as u8);
                         code.data.push(((pop_count >> 24) & 0xff) as u8);
                     }
@@ -644,7 +659,9 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         let local_reg = Register::convert_nonarg_register_id(local);
                         let local_location = local_reg.convert_to_instr_arg();
 
-                        if !local_location.is_register() && local_location.get_offset() >= stack_allocated_local_count {
+                        if !local_location.is_register()
+                            && local_location.get_offset() >= stack_allocated_local_count
+                        {
                             stack_allocated_local_count += 1;
 
                             // push rax
@@ -661,4 +678,3 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
     code
 }
-
