@@ -188,11 +188,12 @@ impl GeneratedCode {
         }
     }
 
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn disassemble(&self, base: *const u8) {
         use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
 
         for (name, range) in self.func_addrs.iter() {
-            println!("\n{}:", name);
+            println!("\n{}({}):", name, unsafe { *(self.data.as_ptr().add(range.start - 16) as *const usize) });
             let bytes = &self.data[range.start..range.end];
             let mut decoder = Decoder::with_ip(64, bytes, base as u64, DecoderOptions::NONE);
 
