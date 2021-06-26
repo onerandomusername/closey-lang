@@ -1011,7 +1011,7 @@ pub fn convert_ast_to_ir(
     // Iterate over every ast node
     for ast in asts {
         // Deal with the header
-        if let Ast::Header(_, name, exports, imports) = ast {
+        if let Ast::Header(_, name, _exports, imports) = ast {
             // Get module name
             let mut full_name = vec![];
             let mut top = *name;
@@ -1029,6 +1029,7 @@ pub fn convert_ast_to_ir(
             module_name = full_name.join("::");
 
             // Deal with exports
+            /*
             for export in exports {
                 // Check exported variable type
                 if let Ast::Empty = export.2 {
@@ -1055,7 +1056,7 @@ pub fn convert_ast_to_ir(
                         );
                     }
                 }
-            }
+            }*/
 
             // Deal with imports
             for import in imports {

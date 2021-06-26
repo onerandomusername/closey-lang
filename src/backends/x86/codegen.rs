@@ -435,9 +435,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
+                                // mov local, [rbp + offset]
                                 code.generate_mov(local_reg, Register::convert_arg_register_id(*arg));
-                                let arg_location =
-                                    Register::convert_arg_register_id(*arg).convert_to_instr_arg();
                             }
 
                             Some(IrArgument::Function(func)) => {
