@@ -415,16 +415,28 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     if known_arity {
                         // First 6 arguments are stored in registers
                         for (i, arg) in ssa.args.iter().skip(1).enumerate() {
-                            let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                            let arg_location = Register::convert_arg_register_id(i).convert_to_instr_arg();
 
                             match arg {
-                                IrArgument::Local(_) => todo!(),
+                                IrArgument::Local(local) => {
+                                    let local_location = local_to_register.get(local).unwrap().convert_to_instr_arg();
+
+                                    if local_location.is_register() {
+                                        // mov arg, local
+                                        code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
+                                        code.data.push(0x8b);
+                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register())
+                                    } else {
+                                        todo!();
+                                    }
+                                }
+
                                 IrArgument::Argument(_) => todo!(),
 
                                 IrArgument::Function(func) => {
-                                    // mov reg, func
-                                    code.data.push(0x48 | reg.is_64_bit());
-                                    code.data.push(0xb8 | reg.get_register());
+                                    // mov arg, func
+                                    code.data.push(0x48 | arg_location.is_64_bit());
+                                    code.data.push(0xb8 | arg_location.get_register());
 
                                     // Insert the label
                                     code.func_refs
