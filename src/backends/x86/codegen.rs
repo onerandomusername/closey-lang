@@ -232,7 +232,7 @@ impl GeneratedCode {
                 output.clear();
                 formatter.format(&instruction, &mut output);
 
-                print!("    {:016X} - ", instruction.ip());
+                print!("{:016X} - ", instruction.ip());
                 let start_index = instruction.ip() as usize - base as usize;
                 let instr_bytes = &bytes[start_index..start_index + instruction.len()];
                 for b in instr_bytes.iter() {
