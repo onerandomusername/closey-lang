@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use super::super::common;
 use super::super::ir::{IrArgument, IrInstruction, IrModule};
@@ -98,7 +99,7 @@ impl Register {
             5 => R13,
             6 => R14,
             7 => R15,
-            _ => Spilled(id - NONARG_REGISTER_COUNT + 1),
+            _ => Spilled(id - NONARG_REGISTER_COUNT),
         }
     }
 
@@ -131,9 +132,9 @@ impl Register {
 
 #[derive(Default)]
 pub struct GeneratedCode {
-    pub(crate) func_addrs: HashMap<String, usize>,
-    pub(crate) func_refs: HashMap<usize, (String, bool)>,
-    pub(crate) data: Vec<u8>,
+    func_addrs: HashMap<String, Range<usize>>,
+    func_refs: HashMap<usize, (String, bool)>,
+    data: Vec<u8>,
 }
 
 impl GeneratedCode {
@@ -159,11 +160,11 @@ impl GeneratedCode {
 
     pub fn relocate(&mut self, base: *const u8) {
         for (code_addr, (func, relative)) in self.func_refs.iter() {
-            if let Some(offset) = self.func_addrs.get(func) {
+            if let Some(range) = self.func_addrs.get(func) {
                 let (addr, byte_count) = if *relative {
-                    ((*offset as i32 - *code_addr as i32 - 4) as u64, 4)
+                    ((range.start as i32 - *code_addr as i32 - 4) as u64, 4)
                 } else {
-                    (base as u64 + *offset as u64, 8)
+                    (base as u64 + range.start as u64, 8)
                 };
 
                 for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
@@ -181,24 +182,46 @@ impl GeneratedCode {
     pub unsafe fn get_fn(&self, func: &str, base: *const u8) -> Option<extern "C" fn() -> u64> {
         if let Some(f) = self.func_addrs.get(func) {
             use std::mem::transmute;
-            Some(transmute(base.add(*f)))
+            Some(transmute(base.add(f.start)))
         } else {
             None
         }
     }
 
-    pub fn print_data(&self) {
-        let mut i = 0;
-        for c in self.data.iter() {
-            print!("{:02x} ", c);
-            i += 1;
-            if i >= 16 {
-                i = 0;
-                println!();
+    pub fn disassemble(&self, base: *const u8) {
+        use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
+
+        for (name, range) in self.func_addrs.iter() {
+            println!("\n{}:", name);
+            let bytes = &self.data[range.start..range.end];
+            let mut decoder = Decoder::with_ip(64, bytes, base as u64, DecoderOptions::NONE);
+
+            let mut formatter = NasmFormatter::new();
+
+            formatter.options_mut().set_digit_separator("`");
+            formatter.options_mut().set_first_operand_char_index(10);
+
+            let mut output = String::new();
+            let mut instruction = Instruction::default();
+            while decoder.can_decode() {
+                decoder.decode_out(&mut instruction);
+
+                output.clear();
+                formatter.format(&instruction, &mut output);
+
+                print!("    {:016X} - ", instruction.ip());
+                let start_index = instruction.ip() as usize - base as usize;
+                let instr_bytes = &bytes[start_index..start_index + instruction.len()];
+                for b in instr_bytes.iter() {
+                    print!("{:02X}", b);
+                }
+                if instr_bytes.len() < 10 {
+                    for _ in 0..10 - instr_bytes.len() {
+                        print!("  ");
+                    }
+                }
+                println!(" {}", output);
             }
-        }
-        if i != 0 {
-            println!();
         }
     }
 }
@@ -240,7 +263,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         code.data.push(0);
 
         // Add function
-        code.func_addrs.insert(func.name.clone(), code.len());
+        code.func_addrs.insert(func.name.clone(), code.len()..code.len() + 1);
 
         // push rbp
         code.data.push(0x55);
@@ -484,6 +507,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 }
             }
         }
+        code.func_addrs.get_mut(&func.name).unwrap().end = code.len();
     }
 
     code

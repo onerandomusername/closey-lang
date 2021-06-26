@@ -86,10 +86,10 @@ fn main() {
                             .unwrap();
                     code.relocate(map.data());
                     if let ExecMode::Codegen = mode {
-                        code.print_data();
+                        code.disassemble(map.data());
                         return;
                     } else if let ExecMode::All = mode {
-                        code.print_data();
+                        code.disassemble(map.data());
                     }
 
                     unsafe {
