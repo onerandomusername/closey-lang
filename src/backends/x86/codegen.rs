@@ -209,7 +209,11 @@ impl GeneratedCode {
     /// # Safety
     /// This function uses transmute to turn a pointer to raw bytes into a function, so use it with
     /// caution.
-    pub unsafe fn get_fn(&self, func: &str, base: *const u8) -> Option<unsafe extern "C" fn() -> u64> {
+    pub unsafe fn get_fn(
+        &self,
+        func: &str,
+        base: *const u8,
+    ) -> Option<unsafe extern "C" fn() -> u64> {
         if let Some(f) = self.func_addrs.get(func) {
             use std::mem::transmute;
             Some(transmute(base.add(f.start)))
@@ -689,4 +693,3 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
     code
 }
-
