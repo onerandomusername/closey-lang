@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
-use super::super::common;
+use super::super::super::backends;
 use super::super::ir::{IrArgument, IrInstruction, IrModule};
 
 const ARG_REGISTER_COUNT: usize = 6;
@@ -381,7 +381,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         // mov rbp, rsp
         code.generate_mov(Register::Rbp, Register::Rsp);
 
-        common::linear_scan(func, NONARG_REGISTER_COUNT);
+        backends::linear_scan(func, NONARG_REGISTER_COUNT);
 
         let mut used_registers = HashSet::new();
         for ssa in func.ssas.iter() {
