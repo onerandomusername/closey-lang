@@ -95,7 +95,8 @@ fn main() {
                     unsafe {
                         std::ptr::copy(code.as_ptr(), map.data(), code.len());
                         let exec = code.get_fn("main", map.data()).unwrap();
-                        println!("{:#x}", exec());
+                        let v = exec();
+                        println!("{:#x}", v);
                     }
                 }
 

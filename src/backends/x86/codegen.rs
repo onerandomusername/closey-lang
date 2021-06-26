@@ -82,7 +82,7 @@ impl Register {
             3 => Rcx,
             4 => R8,
             5 => R9,
-            _ => Arg(id - ARG_REGISTER_COUNT + 1),
+            _ => Arg(id - ARG_REGISTER_COUNT),
         }
     }
 
@@ -161,9 +161,9 @@ impl GeneratedCode {
         for (code_addr, (func, relative)) in self.func_refs.iter() {
             if let Some(offset) = self.func_addrs.get(func) {
                 let (addr, byte_count) = if *relative {
-                    ((*offset as i32 - *code_addr as i32 - 4) as usize, 4)
+                    ((*offset as i32 - *code_addr as i32 - 4) as u64, 4)
                 } else {
-                    (base as usize + *offset, 8)
+                    (base as u64 + *offset as u64, 8)
                 };
 
                 for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
@@ -315,9 +315,9 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 let arg_location =
                                     Register::convert_arg_register_id(*arg).convert_to_instr_arg();
 
-                                // mov local, arg
                                 match (local_location.is_register(), arg_location.is_register()) {
                                     (true, true) => {
+                                        // mov local, arg
                                         code.data.push(
                                             0x48 | arg_location.is_64_bit()
                                                 | (local_location.is_64_bit() << 2),
@@ -330,6 +330,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     }
 
                                     (false, true) => {
+                                        // mov [rbp - offset], arg
                                         todo!();
                                     }
 
@@ -354,6 +355,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     }
 
                                     (false, false) => {
+                                        // mov rax, [rbp + offset]
+                                        // mov [rbp - offset], rax
                                         todo!();
                                     }
                                 }
@@ -386,6 +389,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 IrInstruction::Apply => todo!(),
                 IrInstruction::Call(known_arity) => {
                     if known_arity {
+                        // First 6 arguments are stored in registers
                         for (i, arg) in ssa.args.iter().skip(1).enumerate() {
                             let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
 
@@ -394,58 +398,84 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 IrArgument::Argument(_) => todo!(),
 
                                 IrArgument::Function(func) => {
-                                    if reg.is_register() {
-                                        // mov local, func
-                                        code.data.push(0x48 | reg.is_64_bit());
-                                        code.data.push(0xb8 | reg.get_register());
-
-                                        // Insert the label
-                                        code.func_refs
-                                            .insert(code.data.len(), (func.clone(), false));
-
-                                        // Value
-                                        for _ in 0..8 {
-                                            code.data.push(0);
-                                        }
-                                    } else {
-                                        todo!();
-                                    }
-                                }
-                            }
-
-                            match ssa.args.first().unwrap() {
-                                IrArgument::Local(_) => todo!(),
-                                IrArgument::Argument(_) => todo!(),
-
-                                IrArgument::Function(func) => {
-                                    // call func
-                                    code.data.push(0xe8);
+                                    // mov reg, func
+                                    code.data.push(0x48 | reg.is_64_bit());
+                                    code.data.push(0xb8 | reg.get_register());
 
                                     // Insert the label
-                                    code.func_refs.insert(code.data.len(), (func.clone(), true));
+                                    code.func_refs
+                                        .insert(code.data.len(), (func.clone(), false));
 
                                     // Value
-                                    for _ in 0..4 {
+                                    for _ in 0..8 {
                                         code.data.push(0);
                                     }
                                 }
                             }
 
-                            if let Some(local) = ssa.local {
-                                let local_location = Register::convert_nonarg_register_id(local)
-                                    .convert_to_instr_arg();
+                            if i == ARG_REGISTER_COUNT - 1 {
+                                break;
+                            }
+                        }
 
-                                if local_location.is_register() {
-                                    // mov local, rax
-                                    code.data.push(0x48 | local_location.is_64_bit());
-                                    code.data.push(0x8b);
-                                    code.data.push(
-                                        0xc0 | (local_location.get_register() << 3)
-                                            | Register::Rax.convert_to_instr_arg().get_register(),
-                                    );
-                                } else {
-                                    todo!();
+                        // Rest of the registers are stored on the stack
+                        for arg in ssa.args.iter().skip(ARG_REGISTER_COUNT + 1).rev() {
+                            match arg {
+                                IrArgument::Local(_) => todo!(),
+                                IrArgument::Argument(_) => todo!(),
+
+                                IrArgument::Function(func) => {
+                                    // mov rax, func
+                                    code.data.push(0x48);
+                                    code.data.push(0xb8);
+
+                                    // Insert the label
+                                    code.func_refs
+                                        .insert(code.data.len(), (func.clone(), false));
+
+                                    // Value
+                                    for _ in 0..8 {
+                                        code.data.push(0);
+                                    }
+
+                                    // push rax
+                                    code.data.push(0x50);
                                 }
+                            }
+                        }
+
+                        match ssa.args.first().unwrap() {
+                            IrArgument::Local(_) => todo!(),
+                            IrArgument::Argument(_) => todo!(),
+
+                            IrArgument::Function(func) => {
+                                // call func
+                                code.data.push(0xe8);
+
+                                // Insert the label
+                                code.func_refs.insert(code.data.len(), (func.clone(), true));
+
+                                // Value
+                                for _ in 0..4 {
+                                    code.data.push(0);
+                                }
+                            }
+                        }
+
+                        if let Some(local) = ssa.local {
+                            let local_location = Register::convert_nonarg_register_id(local)
+                                .convert_to_instr_arg();
+
+                            if local_location.is_register() {
+                                // mov local, rax
+                                code.data.push(0x48 | local_location.is_64_bit());
+                                code.data.push(0x8b);
+                                code.data.push(
+                                    0xc0 | (local_location.get_register() << 3)
+                                        | Register::Rax.convert_to_instr_arg().get_register(),
+                                );
+                            } else {
+                                todo!();
                             }
                         }
                     } else {
