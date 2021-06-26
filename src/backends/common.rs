@@ -1,6 +1,7 @@
 use super::ir::IrFunction;
 
-pub(crate) fn linear_scan(func: &mut IrFunction, register_count: usize) {
+/// Performs register allocation by linear scan on an IrFunction.
+pub fn linear_scan(func: &mut IrFunction, register_count: usize) {
     let mut register_lifetimes = vec![0usize; register_count];
 
     'a: for ssa in func.ssas.iter_mut() {

@@ -151,6 +151,7 @@ impl Register {
     }
 }
 
+/// Represents generated x86 code.
 #[derive(Default)]
 pub struct GeneratedCode {
     func_addrs: HashMap<String, Range<usize>>,
@@ -167,18 +168,22 @@ impl GeneratedCode {
         }
     }
 
+    /// Gets the length of the x86 code.
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
+    /// Returns true if the code is empty.
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
+    /// Returns the code as a pointer.
     pub fn as_ptr(&self) -> *const u8 {
         self.data.as_ptr()
     }
 
+    /// Relocates all function addresses to their offset plus the base pointer provided.
     pub fn relocate(&mut self, base: *const u8) {
         for (code_addr, (func, relative)) in self.func_refs.iter() {
             if let Some(range) = self.func_addrs.get(func) {
@@ -199,8 +204,12 @@ impl GeneratedCode {
         }
     }
 
-    #[allow(clippy::missing_safety_doc)]
-    pub unsafe fn get_fn(&self, func: &str, base: *const u8) -> Option<extern "C" fn() -> u64> {
+    /// Returns executable code as a function.
+    ///
+    /// # Safety
+    /// This function uses transmute to turn a pointer to raw bytes into a function, so use it with
+    /// caution.
+    pub unsafe fn get_fn(&self, func: &str, base: *const u8) -> Option<unsafe extern "C" fn() -> u64> {
         if let Some(f) = self.func_addrs.get(func) {
             use std::mem::transmute;
             Some(transmute(base.add(f.start)))
@@ -209,6 +218,7 @@ impl GeneratedCode {
         }
     }
 
+    /// Disassembles the machine code into human readable assembly to stdout.
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn disassemble(&self, base: *const u8) {
         use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
@@ -320,6 +330,7 @@ impl GeneratedCode {
     }
 }
 
+/// Transforms an IrModule into x86 machine code.
 pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
     let mut code = GeneratedCode::new();
 
@@ -678,3 +689,4 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
     code
 }
+

@@ -3,11 +3,21 @@ use std::fmt::Display;
 
 use super::super::frontend::ir::{self, SExpr};
 
+/// An instruction in the low level intermediate representation.
 #[derive(Copy, Clone)]
 pub enum IrInstruction {
+    /// Returns an optional parameter from a function.
     Ret,
+
+    /// Loads a function or argument parameter into a local.
     Load,
+
+    /// Applies a list of arguments to a function pointer or closure struct to form a new closure
+    /// struct.
     Apply,
+
+    /// Calls a function, function pointer, or closure struct and passes the return value into a
+    /// new local value. True if the arity is known at compile time, false otherwise.
     Call(bool),
 }
 
@@ -23,9 +33,16 @@ impl Display for IrInstruction {
     }
 }
 
+/// An argument passed into an instruction in the low level intermediate representation.
 pub enum IrArgument {
+    /// A local value.
     Local(usize),
+
+    /// An argument passed into the function that contains the instruction. Closed values are also
+    /// considered arguments.
     Argument(usize),
+
+    /// A function address.
     Function(String),
 }
 
@@ -40,11 +57,21 @@ impl Display for IrArgument {
     }
 }
 
+/// Represents a single instruction in the lower level intermediate representation.
 pub struct IrSsa {
+    /// The local value the instruction is assigned to.
     pub local: Option<usize>,
+
+    /// The lifetime of the local assigned in this statement.
     pub local_lifetime: usize,
+
+    /// The register the local assigned to in this instruction is allocated in.
     pub local_register: usize,
+
+    /// The instruction (ie opcode) being executed in this instruction.
     pub instr: IrInstruction,
+
+    /// The arguments passed into the instruction.
     pub args: Vec<IrArgument>,
 }
 
@@ -62,9 +89,16 @@ impl Display for IrSsa {
     }
 }
 
+/// A function in the lower level intermediate representation.
 pub struct IrFunction {
+    /// The name of the function.
     pub name: String,
+
+    /// The number of arguments (including closed over values) that the function takes in.
     pub argc: usize,
+
+    /// The list of all SSAs associated with this function.
+    /// TODO: Replace with basic blocks.
     pub ssas: Vec<IrSsa>,
 }
 
@@ -98,7 +132,10 @@ impl IrFunction {
     }
 }
 
+/// A module in lower level intermediate representation.
+/// TODO: Have a higher level data structure that represents the list of all modules in the code.
 pub struct IrModule {
+    /// The list of all functions in the module.
     pub funcs: Vec<IrFunction>,
 }
 
@@ -227,7 +264,7 @@ fn calculate_lifetimes(func: &mut IrFunction) {
             for arg in next.args.iter() {
                 if let IrArgument::Local(l) = arg {
                     if *l == local {
-                        ssa.local_lifetime = j - i + 1;
+                        ssa.local_lifetime = j - i;
                         break;
                     }
                 }
@@ -240,8 +277,7 @@ fn calculate_lifetimes(func: &mut IrFunction) {
     }
 }
 
-// convert_frontend_ir_to_backend_ir(ir::IrModule) -> IrModule
-// Converts the frontend IR language to the backend IR language.
+/// Converts the frontend IR language to the backend IR language.
 pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
     let mut new = IrModule { funcs: vec![] };
 

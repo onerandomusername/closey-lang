@@ -11,8 +11,6 @@ use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
 
-pub static DEBUG: bool = false;
-
 enum ExecMode {
     Exec,
     Correctness,

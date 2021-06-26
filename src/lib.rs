@@ -1,4 +1,14 @@
+// #![deny(missing_docs)]
+
+/// Module that contains helper functions for transforming the higher level intermediate
+/// representation into machine code. This includes functions for lowering the IR, functions for
+/// manipulating the lower level IR, functions for manipulating code structures, and functions for
+/// emitting code.
 pub mod backends;
+
+/// Module that contains helper functions transforming the source text into higher level
+/// intermediate representation. This includes functions for parsing, functions for transforming
+/// the text into IR, and functions for checking the correctness of IR.
 pub mod frontend;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
@@ -11,15 +21,16 @@ use std::collections::HashMap;
 use crate::frontend::ir::{self, Ir, IrError};
 use crate::frontend::parser;
 
-pub static DEBUG: bool = false;
+/// Determines whether the compiler should output debug information or not.
+static DEBUG: bool = false;
 
-type Res<'a> = Result<
+/// The return type of check<>().
+pub type Res<'a> = Result<
     (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>),
     (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>),
 >;
 
-// check(&Vec<(String, bool)>, &Vec<String>, &mut Ir, bool) -> Result<(), ()>
-// Checks whether given code is valid.
+/// Checks whether given code is valid.
 pub fn check<'a>(
     filenames: &'a [(String, bool)],
     codes: &[String],
