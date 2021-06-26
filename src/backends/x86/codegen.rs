@@ -222,7 +222,7 @@ impl GeneratedCode {
             let mut formatter = NasmFormatter::new();
 
             formatter.options_mut().set_digit_separator("`");
-            formatter.options_mut().set_first_operand_char_index(10);
+            formatter.options_mut().set_first_operand_char_index(0);
 
             let mut output = String::new();
             let mut instruction = Instruction::default();
