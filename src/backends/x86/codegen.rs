@@ -431,7 +431,18 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     }
                                 }
 
-                                IrArgument::Argument(_) => todo!(),
+                                IrArgument::Argument(arg) => {
+                                    let local_location = Register::convert_arg_register_id(*arg).convert_to_instr_arg();
+
+                                    if local_location.is_register() {
+                                        // mov arg, local
+                                        code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
+                                        code.data.push(0x8b);
+                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register())
+                                    } else {
+                                        todo!();
+                                    }
+                                }
 
                                 IrArgument::Function(func) => {
                                     // mov arg, func
