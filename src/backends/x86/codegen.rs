@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use super::super::common;
@@ -101,6 +101,28 @@ impl Register {
             7 => R15,
             _ => Spilled(id - NONARG_REGISTER_COUNT),
         }
+    }
+
+    fn revert_to_nonarg_register_id(&self) -> usize {
+        use Register::*;
+
+        match self {
+            Rbx => 0,
+            Rdx => 1,
+            R10 => 2,
+            R11 => 3,
+            R12 => 4,
+            R13 => 5,
+            R14 => 6,
+            R15 => 7,
+            Spilled(id) => id + NONARG_REGISTER_COUNT,
+            _ => panic!("Arguments are not not arguments!")
+        }
+    }
+
+    fn is_callee_saved(&self) -> bool {
+        use Register::*;
+        matches!(self, Rbx | Rsp | Rbp | R12 | R13 | R14 | R15)
     }
 
     fn convert_to_instr_arg(&self) -> InstructionRegister {
@@ -276,12 +298,44 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
         common::linear_scan(func, NONARG_REGISTER_COUNT);
 
-        let mut local_to_register = HashMap::new();
+        let mut used_registers = HashSet::new();
         for ssa in func.ssas.iter() {
+            if ssa.local.is_some() && Register::convert_nonarg_register_id(ssa.local_register).is_callee_saved() && !used_registers.contains(&ssa.local_register) {
+                used_registers.insert(ssa.local_register);
+            }
+        }
+
+        // Push used registers
+        for register in used_registers.iter() {
+            let register = Register::convert_nonarg_register_id(*register).convert_to_instr_arg();
+            if register.is_64_bit() != 0 {
+                code.data.push(0x41);
+            }
+            code.data.push(0x50 | register.get_register());
+        }
+
+
+        let mut local_to_register = HashMap::new();
+        let mut register_lifetimes = vec![0; NONARG_REGISTER_COUNT];
+        for ssa in func.ssas.iter() {
+            for lifetime in register_lifetimes.iter_mut() {
+                if *lifetime != 0 {
+                    *lifetime -= 1;
+                }
+            }
+
             if let Some(local) = ssa.local {
+                let register = Register::convert_nonarg_register_id(ssa.local_register);
+
+                if register_lifetimes.len() < ssa.local_register {
+                    register_lifetimes[ssa.local_register] = ssa.local_lifetime;
+                } else {
+                    register_lifetimes.push(ssa.local_lifetime);
+                }
+
                 local_to_register.insert(
                     local,
-                    Register::convert_nonarg_register_id(ssa.local_register),
+                    register
                 );
             }
 
@@ -313,6 +367,16 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 code.data.push(((offset >> 24) & 0xff) as u8);
                             }
                         }
+                    }
+
+
+                    // Pop used registers
+                    for register in used_registers.iter() {
+                        let register = Register::convert_nonarg_register_id(*register).convert_to_instr_arg();
+                        if register.is_64_bit() != 0 {
+                            code.data.push(0x41);
+                        }
+                        code.data.push(0x58 | register.get_register());
                     }
 
                     // mov rsp, rbp
@@ -411,7 +475,28 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 }
 
                 IrInstruction::Apply => todo!(),
+
                 IrInstruction::Call(known_arity) => {
+                    if register_lifetimes[Register::R11.revert_to_nonarg_register_id()] != 0 {
+                        // push r11
+                        code.data.push(0x41);
+                        code.data.push(0x53);
+                    }
+
+                    // Push arguments
+                    for (i, _) in ssa.args.iter().skip(1).zip(0..func.argc).enumerate() {
+                        let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                        if !reg.is_register() {
+                            break;
+                        }
+
+                        if reg.is_64_bit() != 0 {
+                            code.data.push(0x41);
+                        }
+
+                        code.data.push(0x50 | reg.get_register());
+                    }
+
                     if known_arity {
                         // First 6 arguments are stored in registers
                         for (i, arg) in ssa.args.iter().skip(1).enumerate() {
@@ -425,7 +510,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                         // mov arg, local
                                         code.data.push(0x48 | arg_location.is_64_bit() | (local_location.is_64_bit() << 2));
                                         code.data.push(0x8b);
-                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register())
+                                        code.data.push(0xc0 | (arg_location.get_register() << 3) | local_location.get_register());
                                     } else {
                                         todo!();
                                     }
@@ -528,6 +613,26 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     } else {
                         todo!();
                     }
+
+                    // Pop arguments
+                    for (i, _) in ssa.args.iter().skip(1).zip(0..func.argc).enumerate().rev() {
+                        let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                        if !reg.is_register() {
+                            continue;
+                        }
+
+                        if reg.is_64_bit() != 0 {
+                            code.data.push(0x41);
+                        }
+
+                        code.data.push(0x58 | reg.get_register());
+                    }
+
+                    if register_lifetimes[Register::R11.revert_to_nonarg_register_id()] != 0 {
+                        // pop r11
+                        code.data.push(0x41);
+                        code.data.push(0x5b);
+                    }
                 }
             }
         }
@@ -536,3 +641,4 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
     code
 }
+
