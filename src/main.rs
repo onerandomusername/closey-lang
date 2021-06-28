@@ -5,8 +5,8 @@ use mmap::{
 use std::env;
 use std::process::exit;
 
-use closeyc::backends::ir as backend_ir;
-use closeyc::backends::x86_64::codegen;
+#[allow(unused_imports)]
+use closeyc::backends::{Code, ir as backend_ir, aarch64, riscv64, x86_64, wasm64};
 use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
@@ -18,6 +18,15 @@ enum ExecMode {
     Codegen,
     All,
 }
+
+#[cfg(target_arch = "aarch64")]
+const DEFAULT_ARCH: &str = "aarch64";
+#[cfg(target_arch = "riscv64")]
+const DEFAULT_ARCH: &str = "riscv64";
+#[cfg(target_arch = "wasm64")]
+const DEFAULT_ARCH: &str = "wasm64";
+#[cfg(target_arch = "x86_64")]
+const DEFAULT_ARCH: &str = "x86_64";
 
 fn main() {
     let mut args = env::args();
@@ -78,7 +87,14 @@ fn main() {
                         println!("{}", module);
                     }
 
-                    let mut code = codegen::generate_code(&mut module);
+                    let mut code: Box<dyn Code> = match DEFAULT_ARCH {
+                        "aarch64" => Box::new(aarch64::codegen::generate_code(&mut module)),
+                        "riscv64" => todo!(),
+                        "wasm64" => todo!(),
+                        "x86_64" => Box::new(x86_64::codegen::generate_code(&mut module)),
+                        _ => panic!("unsupported architecture")
+                    };
+
                     let map =
                         MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable])
                             .unwrap();

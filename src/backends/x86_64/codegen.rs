@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
-use super::super::super::backends;
+use super::super::Code;
 use super::super::ir::{IrArgument, IrInstruction, IrModule};
+use super::super::super::backends;
 
 const ARG_REGISTER_COUNT: usize = 6;
 const NONARG_REGISTER_COUNT: usize = 8;
@@ -168,106 +169,6 @@ impl GeneratedCode {
         }
     }
 
-    /// Gets the length of the x86 code.
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Returns true if the code is empty.
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    /// Returns the code as a pointer.
-    pub fn as_ptr(&self) -> *const u8 {
-        self.data.as_ptr()
-    }
-
-    /// Relocates all function addresses to their offset plus the base pointer provided.
-    pub fn relocate(&mut self, base: *const u8) {
-        for (code_addr, (func, relative)) in self.func_refs.iter() {
-            if let Some(range) = self.func_addrs.get(func) {
-                let (addr, byte_count) = if *relative {
-                    ((range.start as i32 - *code_addr as i32 - 4) as u64, 4)
-                } else {
-                    (base as u64 + range.start as u64, 8)
-                };
-
-                for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
-                    if i >= byte_count {
-                        break;
-                    }
-
-                    *byte = ((addr >> (i * 8)) & 0xff) as u8;
-                }
-            }
-        }
-    }
-
-    /// Returns executable code as a function.
-    ///
-    /// # Safety
-    /// This function uses transmute to turn a pointer to raw bytes into a function, so use it with
-    /// caution.
-    pub unsafe fn get_fn(
-        &self,
-        func: &str,
-        base: *const u8,
-    ) -> Option<unsafe extern "C" fn() -> u64> {
-        if let Some(f) = self.func_addrs.get(func) {
-            use std::mem::transmute;
-            Some(transmute(base.add(f.start)))
-        } else {
-            None
-        }
-    }
-
-    /// Disassembles the machine code into human readable assembly to stdout.
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn disassemble(&self, base: *const u8) {
-        use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
-
-        for (name, range) in self.func_addrs.iter() {
-            println!("\n{}({}):", name, unsafe {
-                *(self.data.as_ptr().add(range.start - 16) as *const usize)
-            });
-            let bytes = &self.data[range.start..range.end];
-            let mut decoder = Decoder::with_ip(
-                64,
-                bytes,
-                base as u64 + range.start as u64,
-                DecoderOptions::NONE,
-            );
-
-            let mut formatter = NasmFormatter::new();
-
-            formatter.options_mut().set_digit_separator("`");
-            formatter.options_mut().set_first_operand_char_index(0);
-
-            let mut output = String::new();
-            let mut instruction = Instruction::default();
-            while decoder.can_decode() {
-                decoder.decode_out(&mut instruction);
-
-                output.clear();
-                formatter.format(&instruction, &mut output);
-
-                print!("{:016X}\n    ", instruction.ip());
-                let start_index = instruction.ip() as usize - base as usize;
-                let instr_bytes = &self.data[start_index..start_index + instruction.len()];
-                for b in instr_bytes.iter() {
-                    print!("{:02X}", b);
-                }
-                if instr_bytes.len() < 10 {
-                    for _ in 0..10 - instr_bytes.len() {
-                        print!("  ");
-                    }
-                }
-                println!(" {}", output);
-            }
-        }
-    }
-
     fn generate_mov(&mut self, dest: Register, source: Register) {
         let dest_location = dest.convert_to_instr_arg();
         let source_location = source.convert_to_instr_arg();
@@ -329,6 +230,108 @@ impl GeneratedCode {
 
                 // mov [rbp +- offset], rax
                 self.generate_mov(dest, Register::Rax);
+            }
+        }
+    }
+}
+
+impl Code for GeneratedCode {
+    /// Gets the length of the x86 code.
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns true if the code is empty.
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Returns the code as a pointer.
+    fn as_ptr(&self) -> *const u8 {
+        self.data.as_ptr()
+    }
+
+    /// Relocates all function addresses to their offset plus the base pointer provided.
+    fn relocate(&mut self, base: *const u8) {
+        for (code_addr, (func, relative)) in self.func_refs.iter() {
+            if let Some(range) = self.func_addrs.get(func) {
+                let (addr, byte_count) = if *relative {
+                    ((range.start as i32 - *code_addr as i32 - 4) as u64, 4)
+                } else {
+                    (base as u64 + range.start as u64, 8)
+                };
+
+                for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
+                    if i >= byte_count {
+                        break;
+                    }
+
+                    *byte = ((addr >> (i * 8)) & 0xff) as u8;
+                }
+            }
+        }
+    }
+
+    /// Returns executable code as a function.
+    ///
+    /// # Safety
+    /// This function uses transmute to turn a pointer to raw bytes into a function, so use it with
+    /// caution.
+    unsafe fn get_fn(
+        &self,
+        func: &str,
+        base: *const u8,
+    ) -> Option<unsafe extern "C" fn() -> u64> {
+        if let Some(f) = self.func_addrs.get(func) {
+            use std::mem::transmute;
+            Some(transmute(base.add(f.start)))
+        } else {
+            None
+        }
+    }
+
+    /// Disassembles the machine code into human readable assembly to stdout.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    fn disassemble(&self, base: *const u8) {
+        use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
+
+        for (name, range) in self.func_addrs.iter() {
+            println!("\n{}({}):", name, unsafe {
+                *(self.data.as_ptr().add(range.start - 16) as *const usize)
+            });
+            let bytes = &self.data[range.start..range.end];
+            let mut decoder = Decoder::with_ip(
+                64,
+                bytes,
+                base as u64 + range.start as u64,
+                DecoderOptions::NONE,
+            );
+
+            let mut formatter = NasmFormatter::new();
+
+            formatter.options_mut().set_digit_separator("`");
+            formatter.options_mut().set_first_operand_char_index(0);
+
+            let mut output = String::new();
+            let mut instruction = Instruction::default();
+            while decoder.can_decode() {
+                decoder.decode_out(&mut instruction);
+
+                output.clear();
+                formatter.format(&instruction, &mut output);
+
+                print!("{:016X}\n    ", instruction.ip());
+                let start_index = instruction.ip() as usize - base as usize;
+                let instr_bytes = &self.data[start_index..start_index + instruction.len()];
+                for b in instr_bytes.iter() {
+                    print!("{:02X}", b);
+                }
+                if instr_bytes.len() < 10 {
+                    for _ in 0..10 - instr_bytes.len() {
+                        print!("  ");
+                    }
+                }
+                println!(" {}", output);
             }
         }
     }
