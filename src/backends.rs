@@ -14,34 +14,100 @@ pub mod x86_64;
 /// Module for wasm64 code generation.
 pub mod wasm64;
 
+use std::collections::HashMap;
+use std::ops::Range;
+
 use ir::IrFunction;
 
-pub trait Code {
+#[cfg(target_arch = "aarch64")]
+pub const DEFAULT_ARCH: &str = "aarch64";
+#[cfg(target_arch = "riscv64")]
+pub const DEFAULT_ARCH: &str = "riscv64";
+#[cfg(target_arch = "wasm64")]
+pub const DEFAULT_ARCH: &str = "wasm64";
+#[cfg(target_arch = "x86_64")]
+pub const DEFAULT_ARCH: &str = "x86_64";
+
+/// Represents generated code in some architecture.
+#[derive(Default)]
+pub struct GeneratedCode {
+    func_addrs: HashMap<String, Range<usize>>,
+    func_refs: HashMap<usize, (String, bool)>,
+    data: Vec<u8>,
+}
+
+impl GeneratedCode {
+    pub(crate) fn new() -> GeneratedCode {
+        GeneratedCode {
+            func_addrs: HashMap::new(),
+            func_refs: HashMap::new(),
+            data: Vec::new(),
+        }
+    }
+
     /// Gets the length of the x86 code.
-    fn len(&self) -> usize;
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
 
     /// Returns true if the code is empty.
-    fn is_empty(&self) -> bool;
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 
-    /// Returns the code as a pointer.
-    fn as_ptr(&self) -> *const u8;
+    /// Returns the code as a Vec.
+    pub fn data(&self) -> &Vec<u8> {
+        &self.data
+    }
 
     /// Relocates all function addresses to their offset plus the base pointer provided.
-    fn relocate(&mut self, base: *const u8);
+    pub fn relocate(&mut self, base: *const u8) {
+        for (code_addr, (func, relative)) in self.func_refs.iter() {
+            if let Some(range) = self.func_addrs.get(func) {
+                let (addr, byte_count) = if *relative {
+                    ((range.start as i32 - *code_addr as i32 - 4) as u64, 4)
+                } else {
+                    (base as u64 + range.start as u64, 8)
+                };
+
+                for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
+                    if i >= byte_count {
+                        break;
+                    }
+
+                    *byte = ((addr >> (i * 8)) & 0xff) as u8;
+                }
+            }
+        }
+    }
 
     /// Returns executable code as a function.
     ///
     /// # Safety
     /// This function uses transmute to turn a pointer to raw bytes into a function, so use it with
     /// caution.
-    unsafe fn get_fn(
+    pub unsafe fn get_fn(
         &self,
         func: &str,
         base: *const u8,
-    ) -> Option<unsafe extern "C" fn() -> u64>;
+    ) -> Option<unsafe extern "C" fn() -> u64> {
+        if let Some(f) = self.func_addrs.get(func) {
+            use std::mem::transmute;
+            Some(transmute(base.add(f.start)))
+        } else {
+            None
+        }
+    }
 
-    /// Disassembles the machine code into human readable assembly to stdout.
-    fn disassemble(&self, base: *const u8);
+    /// Gets the mapping from function names to ranges in code.
+    pub fn get_funcs(&self) -> &HashMap<String, Range<usize>> {
+        &self.func_addrs
+    }
+
+    /// Gets the mapping used to relocate a file.
+    pub fn get_relocation_table(&self) -> &HashMap<usize, (String, bool)> {
+        &self.func_refs
+    }
 }
 
 /// Performs register allocation by linear scan on an IrFunction.

@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::ops::Range;
 
-use super::super::Code;
+use super::super::GeneratedCode;
 use super::super::ir::{IrArgument, IrInstruction, IrModule};
 use super::super::super::backends;
 
@@ -151,190 +150,73 @@ impl Register {
         }
     }
 }
+fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register) {
+    let dest_location = dest.convert_to_instr_arg();
+    let source_location = source.convert_to_instr_arg();
 
-/// Represents generated x86 code.
-#[derive(Default)]
-pub struct GeneratedCode {
-    func_addrs: HashMap<String, Range<usize>>,
-    func_refs: HashMap<usize, (String, bool)>,
-    data: Vec<u8>,
-}
-
-impl GeneratedCode {
-    fn new() -> GeneratedCode {
-        GeneratedCode {
-            func_addrs: HashMap::new(),
-            func_refs: HashMap::new(),
-            data: Vec::new(),
-        }
-    }
-
-    fn generate_mov(&mut self, dest: Register, source: Register) {
-        let dest_location = dest.convert_to_instr_arg();
-        let source_location = source.convert_to_instr_arg();
-
-        match (dest_location.is_register(), source_location.is_register()) {
-            (true, true) => {
-                // mov dest_reg, source_reg
-                self.data
-                    .push(0x48 | dest_location.is_64_bit() | (source_location.is_64_bit() << 2));
-                self.data.push(0x89);
-                self.data.push(
-                    0xc0 | dest_location.get_register() | (source_location.get_register() << 3),
-                );
-            }
-
-            (true, false) => {
-                // mov rax, [rbp +- offset]
-                self.data.push(0x48 | (dest_location.is_64_bit() << 2));
-                self.data.push(0x8b);
-                self.data.push(0x85 | (dest_location.get_register() << 3));
-
-                let offset = if let InstructionRegister::Arg(a) = source_location {
-                    (a as u32 + 2) * 8
-                } else if let InstructionRegister::Spilled(s) = source_location {
-                    (-(s as i32 + 1) * 8) as u32
-                } else {
-                    unreachable!();
-                };
-
-                self.data.push((offset & 0xff) as u8);
-                self.data.push(((offset >> 8) & 0xff) as u8);
-                self.data.push(((offset >> 16) & 0xff) as u8);
-                self.data.push(((offset >> 24) & 0xff) as u8);
-            }
-
-            (false, true) => {
-                // mov [rbp +- offset], rax
-                self.data.push(0x48 | (source_location.is_64_bit() << 2));
-                self.data.push(0x89);
-                self.data.push(0x85 | (source_location.get_register() << 3));
-
-                let offset = if let InstructionRegister::Arg(a) = dest_location {
-                    (a as u32 + 2) * 8
-                } else if let InstructionRegister::Spilled(s) = dest_location {
-                    (-(s as i32 + 1) * 8) as u32
-                } else {
-                    unreachable!();
-                };
-
-                self.data.push((offset & 0xff) as u8);
-                self.data.push(((offset >> 8) & 0xff) as u8);
-                self.data.push(((offset >> 16) & 0xff) as u8);
-                self.data.push(((offset >> 24) & 0xff) as u8);
-            }
-
-            (false, false) => {
-                // mov rax, [rbp +- offset]
-                self.generate_mov(Register::Rax, source);
-
-                // mov [rbp +- offset], rax
-                self.generate_mov(dest, Register::Rax);
-            }
-        }
-    }
-}
-
-impl Code for GeneratedCode {
-    /// Gets the length of the x86 code.
-    fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Returns true if the code is empty.
-    fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    /// Returns the code as a pointer.
-    fn as_ptr(&self) -> *const u8 {
-        self.data.as_ptr()
-    }
-
-    /// Relocates all function addresses to their offset plus the base pointer provided.
-    fn relocate(&mut self, base: *const u8) {
-        for (code_addr, (func, relative)) in self.func_refs.iter() {
-            if let Some(range) = self.func_addrs.get(func) {
-                let (addr, byte_count) = if *relative {
-                    ((range.start as i32 - *code_addr as i32 - 4) as u64, 4)
-                } else {
-                    (base as u64 + range.start as u64, 8)
-                };
-
-                for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
-                    if i >= byte_count {
-                        break;
-                    }
-
-                    *byte = ((addr >> (i * 8)) & 0xff) as u8;
-                }
-            }
-        }
-    }
-
-    /// Returns executable code as a function.
-    ///
-    /// # Safety
-    /// This function uses transmute to turn a pointer to raw bytes into a function, so use it with
-    /// caution.
-    unsafe fn get_fn(
-        &self,
-        func: &str,
-        base: *const u8,
-    ) -> Option<unsafe extern "C" fn() -> u64> {
-        if let Some(f) = self.func_addrs.get(func) {
-            use std::mem::transmute;
-            Some(transmute(base.add(f.start)))
-        } else {
-            None
-        }
-    }
-
-    /// Disassembles the machine code into human readable assembly to stdout.
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn disassemble(&self, base: *const u8) {
-        use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
-
-        for (name, range) in self.func_addrs.iter() {
-            println!("\n{}({}):", name, unsafe {
-                *(self.data.as_ptr().add(range.start - 16) as *const usize)
-            });
-            let bytes = &self.data[range.start..range.end];
-            let mut decoder = Decoder::with_ip(
-                64,
-                bytes,
-                base as u64 + range.start as u64,
-                DecoderOptions::NONE,
+    match (dest_location.is_register(), source_location.is_register()) {
+        (true, true) => {
+            // mov dest_reg, source_reg
+            code.data
+                .push(0x48 | dest_location.is_64_bit() | (source_location.is_64_bit() << 2));
+            code.data.push(0x89);
+            code.data.push(
+                0xc0 | dest_location.get_register() | (source_location.get_register() << 3),
             );
+        }
 
-            let mut formatter = NasmFormatter::new();
+        (true, false) => {
+            // mov rax, [rbp +- offset]
+            code.data.push(0x48 | (dest_location.is_64_bit() << 2));
+            code.data.push(0x8b);
+            code.data.push(0x85 | (dest_location.get_register() << 3));
 
-            formatter.options_mut().set_digit_separator("`");
-            formatter.options_mut().set_first_operand_char_index(0);
+            let offset = if let InstructionRegister::Arg(a) = source_location {
+                (a as u32 + 2) * 8
+            } else if let InstructionRegister::Spilled(s) = source_location {
+                (-(s as i32 + 1) * 8) as u32
+            } else {
+                unreachable!();
+            };
 
-            let mut output = String::new();
-            let mut instruction = Instruction::default();
-            while decoder.can_decode() {
-                decoder.decode_out(&mut instruction);
+            code.data.push((offset & 0xff) as u8);
+            code.data.push(((offset >> 8) & 0xff) as u8);
+            code.data.push(((offset >> 16) & 0xff) as u8);
+            code.data.push(((offset >> 24) & 0xff) as u8);
+        }
 
-                output.clear();
-                formatter.format(&instruction, &mut output);
+        (false, true) => {
+            // mov [rbp +- offset], rax
+            code.data.push(0x48 | (source_location.is_64_bit() << 2));
+            code.data.push(0x89);
+            code.data.push(0x85 | (source_location.get_register() << 3));
 
-                print!("{:016X}\n    ", instruction.ip());
-                let start_index = instruction.ip() as usize - base as usize;
-                let instr_bytes = &self.data[start_index..start_index + instruction.len()];
-                for b in instr_bytes.iter() {
-                    print!("{:02X}", b);
-                }
-                if instr_bytes.len() < 10 {
-                    for _ in 0..10 - instr_bytes.len() {
-                        print!("  ");
-                    }
-                }
-                println!(" {}", output);
-            }
+            let offset = if let InstructionRegister::Arg(a) = dest_location {
+                (a as u32 + 2) * 8
+            } else if let InstructionRegister::Spilled(s) = dest_location {
+                (-(s as i32 + 1) * 8) as u32
+            } else {
+                unreachable!();
+            };
+
+            code.data.push((offset & 0xff) as u8);
+            code.data.push(((offset >> 8) & 0xff) as u8);
+            code.data.push(((offset >> 16) & 0xff) as u8);
+            code.data.push(((offset >> 24) & 0xff) as u8);
+        }
+
+        (false, false) => {
+            // mov rax, [rbp +- offset]
+            generate_mov(code, Register::Rax, source);
+
+            // mov [rbp +- offset], rax
+            generate_mov(code, dest, Register::Rax);
         }
     }
+}
+
+pub fn generate_exit_syscall(code: &mut GeneratedCode) {
+
 }
 
 /// Transforms an IrModule into x86 machine code.
@@ -347,33 +229,6 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
             code.data.push(0);
         }
 
-        // Put arity just before function
-        code.data.push((func.argc & 0xff) as u8);
-        code.data.push(((func.argc >> 8) & 0xff) as u8);
-        code.data.push(((func.argc >> 16) & 0xff) as u8);
-        code.data.push(((func.argc >> 24) & 0xff) as u8);
-        if std::mem::size_of::<usize>() == 8 {
-            code.data.push(((func.argc >> 32) & 0xff) as u8);
-            code.data.push(((func.argc >> 40) & 0xff) as u8);
-            code.data.push(((func.argc >> 48) & 0xff) as u8);
-            code.data.push(((func.argc >> 56) & 0xff) as u8);
-        } else {
-            code.data.push(0);
-            code.data.push(0);
-            code.data.push(0);
-            code.data.push(0);
-        }
-
-        // More padding
-        code.data.push(0);
-        code.data.push(0);
-        code.data.push(0);
-        code.data.push(0);
-        code.data.push(0);
-        code.data.push(0);
-        code.data.push(0);
-        code.data.push(0);
-
         // Add function
         code.func_addrs
             .insert(func.name.clone(), code.len()..code.len() + 1);
@@ -382,7 +237,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         code.data.push(0x55);
 
         // mov rbp, rsp
-        code.generate_mov(Register::Rbp, Register::Rsp);
+        generate_mov(&mut code, Register::Rbp, Register::Rsp);
 
         backends::linear_scan(func, NONARG_REGISTER_COUNT);
 
@@ -432,7 +287,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 IrInstruction::Ret => {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
                         let register = local_to_register.get(arg).unwrap();
-                        code.generate_mov(Register::Rax, *register);
+                        generate_mov(&mut code, Register::Rax, *register);
                     }
 
                     // Pop used registers
@@ -446,7 +301,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     }
 
                     // mov rsp, rbp
-                    code.generate_mov(Register::Rsp, Register::Rbp);
+                    generate_mov(&mut code, Register::Rsp, Register::Rbp);
 
                     // pop rbp
                     code.data.push(0x5d);
@@ -463,7 +318,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
                                 // mov local, [rbp + offset]
-                                code.generate_mov(
+                                generate_mov(&mut code, 
                                     local_reg,
                                     Register::convert_arg_register_id(*arg),
                                 );
@@ -504,7 +359,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                         code.data.push(0x50);
                                     } else {
                                         // mov [rbp - offset], rax
-                                        code.generate_mov(local_reg, Register::Rax);
+                                        generate_mov(&mut code, local_reg, Register::Rax);
                                     }
                                 }
                             }
@@ -548,14 +403,14 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     let local_reg = *local_to_register.get(local).unwrap();
 
                                     // mov arg, local
-                                    code.generate_mov(arg_reg, local_reg);
+                                    generate_mov(&mut code, arg_reg, local_reg);
                                 }
 
                                 IrArgument::Argument(arg) => {
                                     let local_reg = Register::convert_arg_register_id(*arg);
 
                                     // mov arg, local
-                                    code.generate_mov(arg_reg, local_reg);
+                                    generate_mov(&mut code, arg_reg, local_reg);
                                 }
 
                                 IrArgument::Function(func) => {
@@ -594,7 +449,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                         code.data.push(0x50 | local_location.get_register());
                                     } else {
                                         // mov rax, [rbp - offset]
-                                        code.generate_mov(Register::Rax, local_reg);
+                                        generate_mov(&mut code, Register::Rax, local_reg);
 
                                         // push rax
                                         code.data.push(0x50);
@@ -685,7 +540,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             // push rax
                             code.data.push(0x50);
                         } else {
-                            code.generate_mov(local_reg, Register::Rax);
+                            generate_mov(&mut code, local_reg, Register::Rax);
                         }
                     }
                 }
