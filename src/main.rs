@@ -44,47 +44,82 @@ fn main() {
                         Some(v) => v,
                         None => return
                     };
+
+                    match DEFAULT_ARCH {
+                        "aarch64" => todo!(),
+                        "riscv64" => todo!(),
+                        "wasm64" => todo!(),
+                        "x86_64" => x86_64::codegen::generate_start_func(&mut code),
+                        _ => panic!("unsupported architecture!")
+                    }
+
                     code.relocate(std::ptr::null());
                     f.push_str(".o");
 
-                    let mut artifact = ArtifactBuilder::new(Triple::host())
+                    let mut artefact = ArtifactBuilder::new(Triple::host())
                         .name(f.clone())
                         .finish();
-                    let _ = artifact.declarations({
+
+                    match artefact.declarations({
                         let mut v: Vec<_> = code.get_funcs().iter().collect();
                         v.sort_by(|a, b| a.1.start.cmp(&b.1.start));
                         v.into_iter().map(|v| (v.0,
-                            if v.0 == "main" {
-                                Decl::function().global()
+                            if v.0 == "main" || v.0 == "_start" {
+                                Decl::function().global().into()
+                            } else if v.1.start == 0 && v.1.end == 0 {
+                                Decl::function_import().into()
                             } else {
-                                Decl::function()
-                            }.into()))
-                    });
-
-                    for (func, range) in code.get_funcs() {
-                        let _ = artifact.define(func, code.data()[range.start..range.end].to_owned());
+                                Decl::function().into()
+                            }))
+                    }) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Error declaring functions: {}", e);
+                            return;
+                        }
                     }
 
-                    for (addr, (to, rel)) in code.get_relocation_table() {
-                        if *rel {
+                    for (func, range) in code.get_funcs() {
+                        if range.start == 0 && range.end == 0 {
                             continue;
                         }
 
+                        match artefact.define(func, code.data()[range.start..range.end].to_owned()) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                eprintln!("Error defining function: {}", e);
+                                return
+                            }
+                        }
+                    }
+
+                    for (addr, (to, _rel)) in code.get_relocation_table() {
                         for (from, range) in code.get_funcs() {
                             if range.start <= *addr && *addr < range.end {
-                                let _ = artifact.link(Link { from, to, at: (addr - range.start) as u64 });
+                                match artefact.link(Link { from, to, at: (addr - range.start) as u64 }) {
+                                    Ok(_) => (),
+                                    Err(e) => {
+                                        eprintln!("Error linking: {}", e);
+                                        return;
+                                    }
+                                }
                                 break;
                             }
                         }
                     }
 
-                    let _ = artifact.write(match File::create(&f) {
+                    match artefact.write(match File::create(&f) {
                         Ok(v) => v,
                         Err(e) => {
                             eprintln!("Error getting file {}: {}", f, e);
                             exit(1);
                         }
-                    });
+                    }) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Error writing artefact to file: {}", e);
+                        }
+                    }
                 }
 
                 None => {

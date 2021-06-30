@@ -28,6 +28,11 @@ pub const DEFAULT_ARCH: &str = "wasm64";
 #[cfg(target_arch = "x86_64")]
 pub const DEFAULT_ARCH: &str = "x86_64";
 
+#[cfg(target_os = "linux")]
+pub const DEFAULT_OS: &str = "linux";
+#[cfg(target_os = "macos")]
+pub const DEFAULT_OS: &str = "macos";
+
 /// Represents generated code in some architecture.
 #[derive(Default)]
 pub struct GeneratedCode {

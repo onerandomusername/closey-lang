@@ -215,8 +215,33 @@ fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register) {
     }
 }
 
-pub fn generate_exit_syscall(code: &mut GeneratedCode) {
+/// Generates the _start function, which calls main and the exit syscall.
+pub fn generate_start_func(code: &mut GeneratedCode) {
+    code.func_addrs.insert(String::from("_start"), code.len()..code.len() + 1);
+    code.func_addrs.insert(String::from("exit"), 0..0);
 
+    // call main
+    code.data.push(0xe8);
+    code.func_refs.insert(code.len(), (String::from("main"), true));
+    code.data.push(0x00);
+    code.data.push(0x00);
+    code.data.push(0x00);
+    code.data.push(0x00);
+
+    // mov rdi, rax
+    code.data.push(0x48);
+    code.data.push(0x89);
+    code.data.push(0xc7);
+
+    // call exit
+    code.data.push(0xe8);
+    code.func_refs.insert(code.len(), (String::from("exit"), true));
+    code.data.push(0x00);
+    code.data.push(0x00);
+    code.data.push(0x00);
+    code.data.push(0x00);
+
+    code.func_addrs.get_mut("_start").unwrap().end = code.len();
 }
 
 /// Transforms an IrModule into x86 machine code.
