@@ -1,7 +1,7 @@
 #ifndef M1_JIT_H
 #define M1_JIT_H
 
-void pthread_jit_write_protect_np(int);
+void pthread_jit_write_protect_np(int _);
 
 #ifndef __APPLE__
 extern int MAP_JIT;
