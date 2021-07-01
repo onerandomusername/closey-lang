@@ -10,7 +10,7 @@ use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 static MAP_JIT: i32 = 0x0800;
 #[cfg(not(target_os = "macos"))]
 static MAP_JIT: i32 = 0;
