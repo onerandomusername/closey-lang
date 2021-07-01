@@ -52,19 +52,17 @@ fn main() {
                         "x86_64" => x86_64::codegen::generate_start_func(&mut code),
                         _ => panic!("unsupported architecture!")
                     }
-
-                    code.relocate(std::ptr::null());
                     f.push_str(".o");
 
                     let mut artefact = ArtifactBuilder::new(Triple::host())
                         .name(f.clone())
                         .finish();
 
+                    let mut funcs: Vec<_> = code.get_funcs().iter().collect();
+                    funcs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
                     match artefact.declarations({
-                        let mut v: Vec<_> = code.get_funcs().iter().collect();
-                        v.sort_by(|a, b| a.1.start.cmp(&b.1.start));
-                        v.into_iter().map(|v| (v.0,
-                            if v.0 == "main" || v.0 == "_start" {
+                        funcs.iter().map(|v| (v.0,
+                            if v.0 == "_start" {
                                 Decl::function().global().into()
                             } else if v.1.start == 0 && v.1.end == 0 {
                                 Decl::function_import().into()
@@ -79,7 +77,7 @@ fn main() {
                         }
                     }
 
-                    for (func, range) in code.get_funcs() {
+                    for (func, range) in funcs {
                         if range.start == 0 && range.end == 0 {
                             continue;
                         }

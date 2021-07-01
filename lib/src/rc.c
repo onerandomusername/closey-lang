@@ -99,6 +99,13 @@ void rcinc(void* ptr) {
     header->rc++;
 }
 
+// Returns true if there is only one reference to the pointer.
+bool has_one_reference(void* ptr) {
+    struct s_rcalloc_header* header = ptr;
+    header--;
+    return header->rc == 1;
+}
+
 // Decrement the reference count.
 void rcfree(void* ptr) {
     struct s_rcalloc_header* header = ptr;
@@ -107,7 +114,7 @@ void rcfree(void* ptr) {
     if (header->rc) {
         header->rc--;
 
-        if (header->size > PAGE_SIZE - sizeof(struct s_rcalloc_header))
+        if (header->rc == 0 && header->size > PAGE_SIZE - sizeof(struct s_rcalloc_header))
             munmap(header, header->size + sizeof(struct s_rcalloc_header));
     }
 }
