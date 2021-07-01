@@ -10,9 +10,12 @@ use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
 
-extern "C" {
-    static MAP_JIT: i32;
+#[cfg(target_os = "macos")]
+static MAP_JIT: i32 = 0x0800;
+#[cfg(not(target_os = "macos"))]
+static MAP_JIT: i32 = 0;
 
+extern "C" {
     fn pthread_jit_write_protect_np(_: bool);
 }
 
@@ -178,6 +181,10 @@ fn main() {
                         let exec = code.get_fn("main", map).unwrap();
                         let v = exec();
                         println!("{:#x}", v);
+                    }
+
+                    unsafe {
+                        libc::munmap(map as *mut libc::c_void, code.len());
                     }
                 }
 
