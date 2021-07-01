@@ -62,7 +62,7 @@ fn main() {
                     funcs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
                     match artefact.declarations({
                         funcs.iter().map(|v| (v.0,
-                            if v.0 == "_start" {
+                            if v.0 == "_start" || v.0 == "main" {
                                 Decl::function().global().into()
                             } else if v.1.start == 0 && v.1.end == 0 {
                                 Decl::function_import().into()
