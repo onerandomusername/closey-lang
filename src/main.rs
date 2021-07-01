@@ -1,9 +1,5 @@
 use faerie::{ArtifactBuilder, Decl, Link};
 use target_lexicon::Triple;
-use mmap::{
-    MapOption::{MapExecutable, MapReadable, MapWritable},
-    MemoryMap,
-};
 use std::env;
 use std::fs::{self, File};
 use std::process::exit;
@@ -13,6 +9,12 @@ use closeyc::backends::{DEFAULT_ARCH, GeneratedCode, ir as backend_ir, aarch64, 
 use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
+
+extern "C" {
+    static MAP_JIT: i32;
+
+    fn pthread_jit_write_protect_np(_: bool);
+}
 
 #[derive(Clone, Copy)]
 enum ExecMode {
@@ -148,16 +150,14 @@ fn main() {
                         None => return
                     };
 
-                    let map =
-                        MemoryMap::new(code.len(), &[MapExecutable, MapReadable, MapWritable])
-                            .unwrap();
-                    code.relocate(map.data());
+                    let map = unsafe { libc::mmap(std::ptr::null_mut(), code.len(), libc::PROT_EXEC | libc::PROT_WRITE | libc::PROT_READ, libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT, 0, 0) } as *mut u8;
+                    code.relocate(map);
                     if let ExecMode::Codegen = mode {
                         match DEFAULT_ARCH {
                             "aarch64" => todo!(),
                             "riscv64" => todo!(),
                             "wasm64" => todo!(),
-                            "x86_64" => x86_64::disassemble(&code, map.data()),
+                            "x86_64" => x86_64::disassemble(&code, map),
                             _ => panic!("unsupported architecture!")
                         }
                         return;
@@ -166,14 +166,16 @@ fn main() {
                             "aarch64" => todo!(),
                             "riscv64" => todo!(),
                             "wasm64" => todo!(),
-                            "x86_64" => x86_64::disassemble(&code, map.data()),
+                            "x86_64" => x86_64::disassemble(&code, map),
                             _ => panic!("unsupported architecture!")
                         }
                     }
 
                     unsafe {
-                        std::ptr::copy(code.data().as_ptr(), map.data(), code.len());
-                        let exec = code.get_fn("main", map.data()).unwrap();
+                        pthread_jit_write_protect_np(false);
+                        std::ptr::copy(code.data().as_ptr(), map, code.len());
+                        pthread_jit_write_protect_np(true);
+                        let exec = code.get_fn("main", map).unwrap();
                         let v = exec();
                         println!("{:#x}", v);
                     }
