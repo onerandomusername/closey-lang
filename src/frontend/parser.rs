@@ -303,7 +303,7 @@ pub enum Ast {
     List(Span, Vec<Ast>),
 
     // Function Application
-    Application(Span, Box<Ast>, Box<Ast>),
+    Application(Span, Box<Ast>, Vec<Ast>),
 
     // Prefix expressions
     Prefix(Span, String, Box<Ast>),
@@ -777,23 +777,24 @@ fn _as(parser: &mut Parser) -> Result<Ast, ParseError> {
 // application(&mut Parser) -> Result<Ast, ParseError>
 // Parses function application.
 fn application(parser: &mut Parser) -> Result<Ast, ParseError> {
-    let mut left = _as(parser)?;
+    let mut func = _as(parser)?;
 
     loop {
         let right = match _as(parser) {
             Ok(v) => v,
             Err(e) if e.fatal => break Err(e),
-            Err(_) => break Ok(left),
+            Err(_) => break Ok(func),
         };
 
-        left = Ast::Application(
-            Span {
-                start: left.get_span().start,
-                end: right.get_span().end,
-            },
-            Box::new(left),
-            Box::new(right),
-        );
+        if let Ast::Application(s, _, v) = &mut func {
+            s.end = right.get_span().end;
+            v.push(right);
+        } else {
+            func = Ast::Application(Span {
+                start: func.get_span().start,
+                end: right.get_span().end
+            }, Box::new(func), vec![right]);
+        }
     }
 }
 
@@ -1085,16 +1086,10 @@ fn type_union(parser: &mut Parser) -> Result<Ast, ParseError> {
     infixl_op!(parser, type_field, Token::Bar, Token::Unreachable)
 }
 
-// type_func(&mut Parser) -> Result<Ast, ParseError>
-// Parses a function type.
-fn type_func(parser: &mut Parser) -> Result<Ast, ParseError> {
-    infixr_op!(parser, type_union, Token::RightArrow, Token::Unreachable)
-}
-
 // type_expr(&mut Parser) -> Result<Ast, ParseError>
 // Parses a type.
 fn type_expr(parser: &mut Parser) -> Result<Ast, ParseError> {
-    infixl_op!(parser, type_func, Token::PlusArrow, Token::Unreachable)
+    infixr_op!(parser, type_union, Token::RightArrow, Token::Unreachable)
 }
 
 // type_assignment(&mut Parser) -> Result<Ast, ParseError>

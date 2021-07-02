@@ -191,42 +191,35 @@ fn conversion_helper(
         Err(SExpr::ExternalFunc(_, _, _)) => todo!(),
         Err(SExpr::Chain(_, _, _)) => todo!(),
 
-        Err(SExpr::Application(m, mut f, a)) => {
-            let mut stack = vec![(m.arity, *a)];
+        Err(SExpr::Application(_, f, a)) => {
+            let mut stack = a.clone();
+            stack.reverse();
 
-            while let SExpr::Application(m, func, a) = *f {
-                stack.push((m.arity, *a));
-                f = func;
-            }
-
-            let mut last_arity = f.get_metadata().arity;
-            let mut f = match get_arg_if_applicable(args_map, *f) {
+            let f = match get_arg_if_applicable(args_map, *f) {
                 Ok(v) => v,
                 Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
             };
             let mut args = vec![];
-            let mut local = None;
-            while let Some((arity, a)) = stack.pop() {
+            let local;
+            while let Some(a) = stack.pop() {
                 args.push(match get_arg_if_applicable(args_map, a) {
                     Ok(v) => v,
                     Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
                 });
-                if arity == 0 {
-                    use std::iter::once;
-                    local = Some(func.get_next_local());
-                    func.ssas.push(IrSsa {
-                        local,
-                        local_lifetime: 0,
-                        local_register: 0,
-                        instr: IrInstruction::Call(last_arity != 0),
-                        args: once(f).chain(args.into_iter()).collect(),
-                    });
-                    f = IrArgument::Local(local.unwrap());
-                    args = vec![];
-                }
-                last_arity = arity;
             }
 
+            use std::iter::once;
+            local = Some(func.get_next_local());
+            func.ssas.push(IrSsa {
+                local,
+                local_lifetime: 0,
+                local_register: 0,
+                instr: IrInstruction::Call(true),
+                args: once(f).chain(args.into_iter()).collect(),
+            });
+
+            /*
+            // TODO: partial application
             if m.arity != 0 {
                 use std::iter::once;
                 local = Some(func.get_next_local());
@@ -238,6 +231,7 @@ fn conversion_helper(
                     args: once(f).chain(args.into_iter()).collect(),
                 });
             }
+            */
 
             local
         }

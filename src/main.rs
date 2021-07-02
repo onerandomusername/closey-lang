@@ -12,7 +12,7 @@ use closeyc::frontend::parser;
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 static MAP_JIT: i32 = 0x0800;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_arch = "aarch64")))]
 static MAP_JIT: i32 = 0;
 
 extern "C" {
@@ -209,7 +209,9 @@ fn main() {
             }
 
             "run" => (),
-            "version" => (),
+            "version" => {
+                println!("closeyc version {}", "0.0.1");
+            }
 
             _ => {
                 eprintln!("Invalid option. See {} help for help.", name);
