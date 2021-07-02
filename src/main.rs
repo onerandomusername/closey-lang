@@ -245,6 +245,7 @@ fn check(s: &str, mode: ExecMode) -> Ir {
     let _ = correctness::check_correctness(&mut root, true);
     if let ExecMode::Correctness = mode {
         println!("{}", root);
+        exit(0);
     } else if let ExecMode::All = mode {
         println!("{}", root);
     }

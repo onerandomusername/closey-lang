@@ -2,7 +2,7 @@ use logos::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::ir::{Ir, IrFunction, IrModule, Location, SExpr, SExprMetadata};
+use super::ir::{ArityInfo, Ir, IrFunction, IrModule, Location, SExpr, SExprMetadata};
 use super::types::{arc, Type};
 
 pub enum CorrectnessError {}
@@ -14,8 +14,9 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
         SExpr::TypeAlias(_, _) => todo!(),
 
         SExpr::Symbol(m, s) => {
-            if let Some((_type, _, _, _)) = module.scope.get_var(s) {
+            if let Some((_type, arity, _, _, _)) = module.scope.get_var(s) {
                 m._type = _type.clone();
+                m.arity = *arity;
                 if module.scope.is_captured(s) && !parent_func.captured_names.contains(s) {
                     parent_func.captured_names.push(s.clone());
                     parent_func.captured.insert(s.clone(), _type.clone());
@@ -29,6 +30,7 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
             if let Some(func) = module.funcs.get(f) {
                 if func.checked {
                     m._type = func._type.clone();
+                    m.arity = ArityInfo::Known(func.args.len());
                 } else {
                     let mut func = module.funcs.remove(f).unwrap();
                     module.scope.push_scope(true);
@@ -37,6 +39,7 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
                         module.scope.put_var(
                             &arg.0,
                             &arg.1,
+                            ArityInfo::Unknown,
                             &Location::empty(),
                             true,
                             &module.name,
@@ -62,6 +65,7 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
 
                     func._type = _type;
                     m._type = func._type.clone();
+                    m.arity = ArityInfo::Known(func.args.len());
 
                     func.checked = true;
                     module.funcs.insert(f.clone(), func);
@@ -91,22 +95,9 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
             use std::mem::swap;
             let mut args_temp = vec![];
             swap(&mut args_temp, args);
+            let mut arity = func.get_metadata().arity;
             for arg in args_temp.into_iter() {
                 if let Type::Curried(_, _) = *ft {
-                    let mut temp = vec![];
-                    swap(&mut temp, args);
-                    **func = SExpr::Application(SExprMetadata {
-                        loc: Location::new(Span {
-                            start: m.loc.span.start,
-                            end: temp.last().unwrap().get_metadata().loc.span.end
-                        }, &m.loc.filename),
-                        loc2: Location::empty(),
-                        origin: m.origin.clone(),
-                        _type: ft.clone(),
-                        tailrec: false,
-                        impure: false
-                    }, func.clone(), temp);
-
                     while let Type::Curried(_, f) = &*ft {
                         ft = f.clone();
                     }
@@ -125,21 +116,50 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
                     }
 
                     args.push(arg);
+
+                    arity = match arity {
+                        ArityInfo::Known(v) if v > 0 => ArityInfo::Known(v - 1),
+                        ArityInfo::Known(_) => ArityInfo::Unknown,
+                        ArityInfo::Unknown => ArityInfo::Unknown
+                    };
+
+                    if matches!(arity, ArityInfo::Unknown | ArityInfo::Known(0)) {
+                        let mut temp = vec![];
+                        swap(&mut temp, args);
+                        **func = SExpr::Application(SExprMetadata {
+                            loc: Location::new(Span {
+                                start: m.loc.span.start,
+                                end: temp.last().unwrap().get_metadata().loc.span.end
+                            }, &m.loc.filename),
+                            loc2: Location::empty(),
+                            origin: m.origin.clone(),
+                            _type: {
+                                let mut ft = ft.clone();
+                                Arc::make_mut(&mut ft).replace_generics(&generics_map);
+                                ft
+                            },
+                            arity,
+                            tailrec: false,
+                            impure: false
+                        }, func.clone(), temp);
+                    }
                 } else {
                     panic!("type {} is not a function", func.get_metadata()._type);
                 }
             }
 
             m._type = ft;
+            m.arity = arity;
             Arc::make_mut(&mut m._type).replace_generics(&generics_map);
         }
 
         SExpr::Assign(m, a, v) => {
             check_sexpr(parent_func, v, module, errors);
             m._type = v.get_metadata()._type.clone();
+            m.arity = v.get_metadata().arity;
             module
                 .scope
-                .put_var(a, &m._type, &m.loc, true, &module.name);
+                .put_var(a, &m._type, m.arity, &m.loc, true, &module.name);
         }
 
         SExpr::With(_, _, _) => todo!(),
@@ -164,7 +184,7 @@ pub fn check_correctness(ir: &mut Ir, _require_main: bool) -> Result<(), Vec<Cor
 
             module.scope.push_scope(true);
             for arg in func.args.iter() {
-                module.scope.put_var(&arg.0, &arg.1, &Location::empty(), true, "");
+                module.scope.put_var(&arg.0, &arg.1, ArityInfo::Unknown, &Location::empty(), true, "");
             }
 
             let mut body = SExpr::Empty(SExprMetadata::empty());

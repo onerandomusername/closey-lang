@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use super::super::frontend::ir::{self, SExpr};
+use super::super::frontend::ir::{self, ArityInfo, SExpr};
 
 /// An instruction in the low level intermediate representation.
 #[derive(Copy, Clone)]
@@ -191,38 +191,20 @@ fn conversion_helper(
         Err(SExpr::ExternalFunc(_, _, _)) => todo!(),
         Err(SExpr::Chain(_, _, _)) => todo!(),
 
-        Err(SExpr::Application(_, f, a)) => {
-            let mut stack = a.clone();
-            stack.reverse();
-
+        Err(SExpr::Application(m, f, a)) => {
             let f = match get_arg_if_applicable(args_map, *f) {
                 Ok(v) => v,
                 Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
             };
-            let mut args = vec![];
-            let local;
-            while let Some(a) = stack.pop() {
-                args.push(match get_arg_if_applicable(args_map, a) {
-                    Ok(v) => v,
-                    Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
-                });
-            }
+
+            let args: Vec<_> = a.into_iter().map(|a| match get_arg_if_applicable(args_map, a) {
+                Ok(v) => v,
+                Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
+            }).collect();
 
             use std::iter::once;
-            local = Some(func.get_next_local());
-            func.ssas.push(IrSsa {
-                local,
-                local_lifetime: 0,
-                local_register: 0,
-                instr: IrInstruction::Call(true),
-                args: once(f).chain(args.into_iter()).collect(),
-            });
-
-            /*
-            // TODO: partial application
-            if m.arity != 0 {
-                use std::iter::once;
-                local = Some(func.get_next_local());
+            let local = Some(func.get_next_local());
+            if matches!(m.arity, ArityInfo::Known(v) if v != 0) {
                 func.ssas.push(IrSsa {
                     local,
                     local_lifetime: 0,
@@ -230,8 +212,15 @@ fn conversion_helper(
                     instr: IrInstruction::Apply,
                     args: once(f).chain(args.into_iter()).collect(),
                 });
+            } else {
+                func.ssas.push(IrSsa {
+                    local,
+                    local_lifetime: 0,
+                    local_register: 0,
+                    instr: IrInstruction::Call(matches!(m.arity, ArityInfo::Known(_))),
+                    args: once(f).chain(args.into_iter()).collect(),
+                });
             }
-            */
 
             local
         }

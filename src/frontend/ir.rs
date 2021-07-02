@@ -53,6 +53,14 @@ pub enum DuplicateModuleInfo {
     BothSuperset,
 }
 
+// TODO: make arity checker smarter (ie, check for arity dependent on arguments or closed over
+// values so something like (\x . x) (\y . y) doesn't yield an unknown arity.)
+#[derive(Debug, Clone, Copy)]
+pub enum ArityInfo {
+    Unknown,
+    Known(usize),
+}
+
 // Represents metadata associated with sexpressions.
 #[derive(Debug, Clone)]
 pub struct SExprMetadata {
@@ -60,6 +68,7 @@ pub struct SExprMetadata {
     pub loc2: Location,
     pub origin: String,
     pub _type: TypeRc,
+    pub arity: ArityInfo,
     pub tailrec: bool,
     pub impure: bool,
 }
@@ -73,6 +82,7 @@ impl SExprMetadata {
             loc2: Location::empty(),
             origin: String::with_capacity(0),
             _type: arc::new(Type::Error),
+            arity: ArityInfo::Unknown,
             tailrec: false,
             impure: false,
         }
@@ -431,6 +441,7 @@ fn convert_node(
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
+                arity: ArityInfo::Unknown,
                 tailrec: false,
                 impure: false,
             },
@@ -580,6 +591,7 @@ fn convert_node(
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
                         _type: arc::new(Type::Error),
+                        arity: ArityInfo::Unknown,
                         tailrec: false,
                         impure: false,
                     },
@@ -598,6 +610,7 @@ fn convert_node(
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
+                arity: ArityInfo::Unknown,
                 tailrec: false,
                 impure: false,
             },
@@ -641,6 +654,7 @@ fn convert_node(
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
                         _type: arc::new(Type::Error),
+                        arity: ArityInfo::Unknown,
                         tailrec: false,
                         impure: false,
                     },
@@ -651,6 +665,7 @@ fn convert_node(
                             loc2: Location::empty(),
                             origin: String::with_capacity(0),
                             _type: arc::new(Type::Error),
+                            arity: ArityInfo::Unknown,
                             tailrec: false,
                             impure: false,
                         },
@@ -664,6 +679,7 @@ fn convert_node(
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
                         _type: arc::new(Type::Error),
+                        arity: ArityInfo::Unknown,
                         tailrec: false,
                         impure: false,
                     },
@@ -711,6 +727,7 @@ fn convert_node(
                         loc2: Location::new(ts, filename),
                         origin: String::with_capacity(0),
                         _type: _type.clone(),
+                        arity: ArityInfo::Unknown,
                         tailrec: false,
                         impure: false,
                     },
@@ -721,6 +738,7 @@ fn convert_node(
                             loc2: Location::empty(),
                             origin: String::with_capacity(0),
                             _type,
+                            arity: ArityInfo::Unknown,
                             tailrec: false,
                             impure: false,
                         },
@@ -734,6 +752,7 @@ fn convert_node(
                         loc2: Location::new(_type.get_span(), filename),
                         origin: String::with_capacity(0),
                         _type: arc::new(types::convert_ast_to_type(*_type, filename)),
+                        arity: ArityInfo::Unknown,
                         tailrec: false,
                         impure: false,
                     },
@@ -753,6 +772,7 @@ fn convert_node(
                     loc2: Location::new(span2, filename),
                     origin: String::with_capacity(0),
                     _type,
+                    arity: ArityInfo::Unknown,
                     tailrec: false,
                     impure: false,
                 },
@@ -779,6 +799,7 @@ fn convert_node(
                     loc2: Location::empty(),
                     origin: String::with_capacity(0),
                     _type: arc::new(Type::Error),
+                    arity: ArityInfo::Unknown,
                     tailrec: false,
                     impure: false,
                 },
@@ -828,6 +849,7 @@ fn convert_node(
                     loc2: Location::empty(),
                     origin: String::with_capacity(0),
                     _type,
+                    arity: ArityInfo::Unknown,
                     tailrec: false,
                     impure: false,
                 },
@@ -851,6 +873,7 @@ fn convert_node(
                     loc2: Location::empty(),
                     origin: String::with_capacity(0),
                     _type: arc::new(Type::Error),
+                    arity: ArityInfo::Unknown,
                     tailrec: false,
                     impure: false,
                 },
@@ -899,6 +922,7 @@ fn convert_node(
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
+                arity: ArityInfo::Unknown,
                 tailrec: false,
                 impure: false,
             },
@@ -929,6 +953,7 @@ fn convert_node(
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
                 _type: arc::new(Type::Error),
+                arity: ArityInfo::Unknown,
                 tailrec: false,
                 impure: false,
             },

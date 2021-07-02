@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use super::ir::Location;
+use super::ir::{ArityInfo, Location};
 use super::types::TypeRc;
 
 #[derive(Debug, Default)]
 pub struct Scope {
-    pub variables: HashMap<String, (TypeRc, Location, bool, String)>,
+    pub variables: HashMap<String, (TypeRc, ArityInfo, Location, bool, String)>,
     pub parent: Option<Box<Scope>>,
     new_func: bool,
 }
@@ -21,26 +21,28 @@ impl Scope {
         }
     }
 
-    // put_var_raw(&mut self, String, TypeRc, Span, bool) -> ()
+    // put_var_raw(&mut self, String, TypeRc, ArityInfo, Span, bool) -> ()
     // Puts a variable in the current scope.
     pub fn put_var_raw(
         &mut self,
         name: String,
         _type: TypeRc,
+        arity: ArityInfo,
         loc: Location,
         assigned: bool,
         origin: String,
     ) {
         self.variables
-            .insert(name, (_type, loc, assigned, origin));
+            .insert(name, (_type, arity, loc, assigned, origin));
     }
 
-    // put_var(&mut self, &str, Span, bool) -> ()
+    // put_var(&mut self, &str, ArityInfo, Span, bool) -> ()
     // Puts a variable in the current scope.
     pub fn put_var(
         &mut self,
         name: &str,
         _type: &TypeRc,
+        arity: ArityInfo,
         loc: &Location,
         assigned: bool,
         origin: &str,
@@ -49,6 +51,7 @@ impl Scope {
             String::from(name),
             (
                 _type.clone(),
+                arity,
                 loc.clone(),
                 assigned,
                 String::from(origin),
@@ -56,9 +59,9 @@ impl Scope {
         );
     }
 
-    // get_var(&self, &str) -> Option<&(Type, Location, bool, String)>
+    // get_var(&self, &str) -> Option<&(Type, ArityInfo, Location, bool, String)>
     // Gets a variable from the stack of scopes.
-    pub fn get_var(&self, name: &str) -> Option<&(TypeRc, Location, bool, String)> {
+    pub fn get_var(&self, name: &str) -> Option<&(TypeRc, ArityInfo, Location, bool, String)> {
         // Set up
         let name = String::from(name);
         let mut scope = self;
