@@ -221,7 +221,7 @@ fn generate_lea(code: &mut GeneratedCode, dest: Register, source: &str) {
         code.data.push(0x8d);
         code.data.push(0x05 | (dest_location.get_register() << 3));
         code.func_refs.insert(code.data.len(), source.to_owned());
-        code.data.push(0x00);
+        code.data.push(0x01);
         code.data.push(0x00);
         code.data.push(0x00);
         code.data.push(0x00);
@@ -230,7 +230,7 @@ fn generate_lea(code: &mut GeneratedCode, dest: Register, source: &str) {
         code.data.push(0x8d);
         code.data.push(0x05);
         code.func_refs.insert(code.data.len(), source.to_owned());
-        code.data.push(0x00);
+        code.data.push(0x01);
         code.data.push(0x00);
         code.data.push(0x00);
         code.data.push(0x00);
@@ -551,7 +551,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 pub fn relocate(code: &mut GeneratedCode) {
     for (code_addr, func) in code.func_refs.iter() {
         if let Some(range) = code.func_addrs.get(func) {
-            let addr = ((range.start as i32 - *code_addr as i32) as i64 - 4) as u64;
+            let addr = ((range.start as i32 - *code_addr as i32) as i64 + unsafe { *(code.data.as_ptr().add(*code_addr) as *const i32) } as i64 - 4) as u64;
 
             for (i, byte) in code.data.iter_mut().skip(*code_addr).enumerate() {
                 if i >= 4 {

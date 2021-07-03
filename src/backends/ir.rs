@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 
-use super::super::frontend::ir::{self, ArityInfo, SExpr};
+use super::super::frontend::ir::{self, ArityInfo, SExpr, SExprMetadata};
 
 /// An instruction in the low level intermediate representation.
 #[derive(Copy, Clone)]
@@ -151,6 +151,7 @@ impl Display for IrModule {
 fn get_arg_if_applicable(
     args_map: &HashMap<String, usize>,
     sexpr: SExpr,
+    map: &HashMap<String, Vec<String>>,
 ) -> Result<IrArgument, SExpr> {
     match sexpr {
         SExpr::Symbol(_, s) => {
@@ -161,7 +162,7 @@ fn get_arg_if_applicable(
             }
         }
 
-        SExpr::Function(_, f) => Ok(IrArgument::Function(f)),
+        SExpr::Function(_, f) if map.get(&f).unwrap().is_empty() => Ok(IrArgument::Function(f)),
 
         _ => Err(sexpr),
     }
@@ -171,8 +172,9 @@ fn conversion_helper(
     args_map: &HashMap<String, usize>,
     func: &mut IrFunction,
     sexpr: SExpr,
+    map: &HashMap<String, Vec<String>>,
 ) -> Option<usize> {
-    match get_arg_if_applicable(args_map, sexpr) {
+    match get_arg_if_applicable(args_map, sexpr, map) {
         Ok(v) => {
             let local = Some(func.get_next_local());
             func.ssas.push(IrSsa {
@@ -191,17 +193,31 @@ fn conversion_helper(
         Err(SExpr::ExternalFunc(_, _, _)) => todo!(),
         Err(SExpr::Chain(_, _, _)) => todo!(),
 
+        Err(SExpr::Function(_, f)) => {
+            use std::iter::once;
+            let local = Some(func.get_next_local());
+            let args = map.get(&f).unwrap().iter().map(|v| get_arg_if_applicable(args_map, SExpr::Symbol(SExprMetadata::empty(), v.clone()), map).unwrap());
+            func.ssas.push(IrSsa {
+                local,
+                local_lifetime: 0,
+                local_register: 0,
+                instr: IrInstruction::Apply,
+                args: once(IrArgument::Function(f)).chain(args).collect()
+            });
+            local
+        }
+
         Err(SExpr::Application(m, f, a)) => {
-            let f = match get_arg_if_applicable(args_map, *f) {
+            let f = match get_arg_if_applicable(args_map, *f, map) {
                 Ok(v) => v,
-                Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
+                Err(e) => IrArgument::Local(conversion_helper(args_map, func, e, map).unwrap()),
             };
 
             let args: Vec<_> = a
                 .into_iter()
-                .map(|a| match get_arg_if_applicable(args_map, a) {
+                .map(|a| match get_arg_if_applicable(args_map, a, map) {
                     Ok(v) => v,
-                    Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
+                    Err(e) => IrArgument::Local(conversion_helper(args_map, func, e, map).unwrap()),
                 })
                 .collect();
 
@@ -232,7 +248,7 @@ fn conversion_helper(
         Err(SExpr::With(_, _, _)) => todo!(),
         Err(SExpr::Match(_, _, _)) => todo!(),
 
-        Err(SExpr::Symbol(_, _)) | Err(SExpr::Function(_, _)) => unreachable!(),
+        Err(SExpr::Symbol(_, _)) => unreachable!(),
     }
 }
 
@@ -267,6 +283,7 @@ fn calculate_lifetimes(func: &mut IrFunction) {
 pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
     let mut new = IrModule { funcs: vec![] };
 
+    let map: HashMap<_, _> = module.funcs.iter().map(|v| (v.0.clone(), v.1.captured_names.clone())).collect();
     for func in module.funcs {
         let mut f = IrFunction {
             name: func.1.name,
@@ -282,7 +299,7 @@ pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
             .map(|v| (v.1, v.0))
             .collect();
 
-        conversion_helper(&args_map, &mut f, func.1.body);
+        conversion_helper(&args_map, &mut f, func.1.body, &map);
         f.ssas.push(IrSsa {
             local: None,
             local_lifetime: 0,
