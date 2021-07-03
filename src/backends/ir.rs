@@ -13,12 +13,20 @@ pub enum IrInstruction {
     Load,
 
     /// Applies a list of arguments to a function pointer or closure struct to form a new closure
-    /// struct.
+    /// struct. If passed in a closure struct, it allocates a new closure struct if the passed in
+    /// closure struct has a reference count greater than 1.
     Apply,
 
     /// Calls a function, function pointer, or closure struct and passes the return value into a
     /// new local value. True if the arity is known at compile time, false otherwise.
     Call(bool),
+
+    /// Increments the reference counter for a closure struct.
+    RcInc,
+
+    /// Decrements the reference counter for a closure struct and deallocates and decrements child
+    /// nodes if the reference counter reaches 0.
+    RcFuncFree,
 }
 
 impl Display for IrInstruction {
@@ -28,12 +36,16 @@ impl Display for IrInstruction {
             Ret => write!(f, "ret"),
             Load => write!(f, "load"),
             Apply => write!(f, "apply"),
-            Call(known_arity) => write!(f, "call{}", if *known_arity { "" } else { "?" }),
+            Call(true) => write!(f, "call"),
+            Call(false) => write!(f, "call?"),
+            RcInc => write!(f, "rcinc"),
+            RcFuncFree => write!(f, "rcfuncfree"),
         }
     }
 }
 
 /// An argument passed into an instruction in the low level intermediate representation.
+#[derive(Clone)]
 pub enum IrArgument {
     /// A local value.
     Local(usize),
@@ -279,6 +291,54 @@ fn calculate_lifetimes(func: &mut IrFunction) {
     }
 }
 
+fn insert_rc_instructions(func: &mut IrFunction) {
+    let mut i = 0;
+    let mut local_lifetimes: HashMap<usize, usize> = HashMap::new();
+    while let Some(ssa) = func.ssas.get(i) {
+        if let IrInstruction::Apply = ssa.instr {
+            let mut inserts = vec![];
+            for arg in ssa.args.iter().skip(1) {
+                if !matches!(arg, IrArgument::Function(_)) {
+                    inserts.push(IrSsa {
+                        local: None,
+                        local_lifetime: 0,
+                        local_register: 0,
+                        instr: IrInstruction::RcInc,
+                        args: vec![arg.clone()]
+                    });
+                }
+            }
+
+            for insert in inserts {
+                func.ssas.insert(i, insert);
+                i += 1;
+            }
+
+            let ssa = func.ssas.get(i).unwrap();
+            if let Some(local) = ssa.local {
+                local_lifetimes.insert(local, ssa.local_lifetime + 1);
+            }
+            for local in local_lifetimes.keys().cloned().collect::<Vec<_>>() {
+                let lifetime = local_lifetimes.get_mut(&local).unwrap();
+                *lifetime -= 1;
+                if *lifetime == 0 {
+                    func.ssas.insert(i + 1, IrSsa {
+                        local: None,
+                        local_lifetime: 0,
+                        local_register: 0,
+                        instr: IrInstruction::RcFuncFree,
+                        args: vec![IrArgument::Local(local)]
+                    });
+                    i += 1;
+                    local_lifetimes.remove(&local);
+                }
+            }
+        }
+
+        i += 1;
+    }
+}
+
 /// Converts the frontend IR language to the backend IR language.
 pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
     let mut new = IrModule { funcs: vec![] };
@@ -313,6 +373,7 @@ pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
         });
 
         calculate_lifetimes(&mut f);
+        insert_rc_instructions(&mut f);
 
         new.funcs.push(f);
     }

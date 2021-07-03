@@ -539,6 +539,10 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         }
                     }
                 }
+
+                IrInstruction::RcInc => todo!(),
+
+                IrInstruction::RcFuncFree => todo!(),
             }
         }
         code.func_addrs.get_mut(&func.name).unwrap().end = code.len();
