@@ -1,3 +1,4 @@
+use clap::{crate_version, App, Arg, SubCommand};
 use faerie::{ArtifactBuilder, Decl, Link};
 use std::env;
 use std::fs::{self, File};
@@ -21,230 +22,517 @@ extern "C" {
     fn pthread_jit_write_protect_np(_: bool);
 }
 
-#[derive(Clone, Copy)]
-enum ExecMode {
-    Exec,
-    Correctness,
-    Ir,
-    Codegen,
-    All,
+#[derive(Debug)]
+enum CloseyCode<'a> {
+    None,
+    Exec(&'a str),
+    Files(Vec<&'a str>),
 }
 
 fn main() {
-    let mut args = env::args();
-    let name = args.next().unwrap();
+    let files = Arg::with_name("files")
+        .multiple(true)
+        .last(true)
+        .required_unless("exec");
+    let exec = Arg::with_name("exec")
+        .long("exec")
+        .short("e")
+        .min_values(1)
+        .max_values(1);
+    let app =
+        App::new("closeyc")
+            .version(crate_version!())
+            .about("Compiler for the Closey language.")
+            .subcommand(
+                SubCommand::with_name("build")
+                    .about("Builds Closey code and exports as an object file.")
+                    .arg(
+                        Arg::with_name("output")
+                            .long("output")
+                            .short("o")
+                            .help("The output file; by default this is a.out")
+                            .min_values(1)
+                            .max_values(1),
+                    )
+                    .arg(files.clone().help("The Closey files to compile."))
+                    .arg(exec.clone().help("A Closey command to compile.")),
+            )
+            .subcommand(
+                SubCommand::with_name("run")
+                    .about("Runs Closey code by JIT compiling it.")
+                    .arg(files.clone().help("The Closey files to run."))
+                    .arg(exec.clone().help("A Closey command to run.")),
+            )
+            .subcommand(
+                SubCommand::with_name("analyse")
+                    .alias("analyze")
+                    .about("Runs the semantic analyser on the given Closey code")
+                    .arg(
+                        Arg::with_name("hlir")
+                            .long("hlir")
+                            .short("i")
+                            .help("Prints out the higher level IR"),
+                    )
+                    .arg(files.clone().help("The Closey files to analyse."))
+                    .arg(exec.clone().help("The Closey command to analyse.")),
+            )
+            .subcommand(
+                SubCommand::with_name("assembly")
+                    .alias("asm")
+                    .about("Prints out the assembly for the given Closey code")
+                    .arg(
+                        files
+                            .clone()
+                            .help("The Closey files to generate assembly for."),
+                    )
+                    .arg(
+                        exec.clone()
+                            .help("The Closey command to generate assembly for."),
+                    ),
+            )
+            .subcommand(
+                SubCommand::with_name("llir")
+                    .about("Prints out the low level IR for the given Closey code")
+                    .arg(files.help("The Closey files to generate LLIR for."))
+                    .arg(exec.help("The Closey command to generate LLIR for.")),
+            )
+            .subcommand(SubCommand::with_name("repl").about(
+                "Runs the Closey REPL. If no subcommand is provided, the REPL will still run.",
+            ));
 
-    if args.len() > 0 {
-        match args.next().unwrap().as_str() {
-            "build" => match args.next() {
-                Some(mut f) => {
-                    let contents = match fs::read_to_string(&f) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("Error reading file {}: {}", f, e);
-                            exit(1);
-                        }
-                    };
+    let matches = app.get_matches();
 
-                    let root = check(&contents, ExecMode::All);
-                    let mut code = match compile(root, ExecMode::All) {
-                        Some(v) => v,
-                        None => return,
-                    };
+    let code = match matches.subcommand_name() {
+        Some("repl") | None => CloseyCode::None,
 
-                    match DEFAULT_ARCH {
-                        "aarch64" => todo!(),
-                        "riscv64" => todo!(),
-                        "wasm64" => todo!(),
-                        "x86_64" => x86_64::codegen::generate_start_func(&mut code),
-                        _ => panic!("unsupported architecture!"),
+        Some(s) => {
+            let matches = matches.subcommand_matches(s).unwrap();
+            match matches.value_of("exec") {
+                Some(v) => CloseyCode::Exec(v),
+                None => CloseyCode::Files(matches.values_of("files").unwrap().collect()),
+            }
+        }
+    };
+
+    let contents = match code {
+        CloseyCode::Exec(s) => Some(s.to_owned()),
+        CloseyCode::Files(v) => match fs::read_to_string(v.first().unwrap()) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                eprintln!("error reading file {}: {}", v.first().unwrap(), e);
+                exit(1);
+            }
+        },
+        CloseyCode::None => None,
+    };
+
+    match matches.subcommand_name() {
+        Some("analyse") => {
+            let contents = contents.unwrap();
+            let root = check(&contents);
+            println!("{}", root);
+        }
+
+        Some("assembly") => {
+            let contents = contents.unwrap();
+            let root = check(&contents);
+
+            let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
+                root.modules.into_iter().next().unwrap().1,
+            );
+
+            let mut code = match compile(&mut module) {
+                Some(v) => v,
+                None => return,
+            };
+            code.relocate(std::ptr::null());
+
+            match DEFAULT_ARCH {
+                "aarch64" => todo!(),
+                "riscv64" => todo!(),
+                "wasm64" => todo!(),
+                "x86_64" => x86_64::disassemble(&code, std::ptr::null()),
+                _ => panic!("unsupported architecture!"),
+            }
+        }
+
+        Some("build") => {
+            let contents = contents.unwrap();
+            let root = check(&contents);
+
+            let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
+                root.modules.into_iter().next().unwrap().1,
+            );
+
+            let mut code = match compile(&mut module) {
+                Some(v) => v,
+                None => return,
+            };
+
+            match DEFAULT_ARCH {
+                "aarch64" => todo!(),
+                "riscv64" => todo!(),
+                "wasm64" => todo!(),
+                "x86_64" => x86_64::codegen::generate_start_func(&mut code),
+                _ => panic!("unsupported architecture!"),
+            }
+
+            let f = matches
+                .subcommand_matches("build")
+                .unwrap()
+                .value_of("output")
+                .unwrap_or("a.o")
+                .to_owned();
+
+            let mut artefact = ArtifactBuilder::new(Triple::host())
+                .name(f.clone())
+                .finish();
+
+            let mut funcs: Vec<_> = code.get_funcs().iter().collect();
+            funcs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
+            match artefact.declarations({
+                funcs.iter().map(|v| {
+                    (
+                        v.0,
+                        if v.0 == "_start" || v.0 == "main" {
+                            Decl::function().global().into()
+                        } else if v.1.start == 0 && v.1.end == 0 {
+                            Decl::function_import().into()
+                        } else {
+                            Decl::function().into()
+                        },
+                    )
+                })
+            }) {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("Error declaring functions: {}", e);
+                    return;
+                }
+            }
+
+            for (func, range) in funcs {
+                if range.start == 0 && range.end == 0 {
+                    continue;
+                }
+
+                match artefact.define(func, code.data()[range.start..range.end].to_owned()) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("Error defining function: {}", e);
+                        return;
                     }
-                    f.push_str(".o");
+                }
+            }
 
-                    let mut artefact = ArtifactBuilder::new(Triple::host())
-                        .name(f.clone())
-                        .finish();
-
-                    let mut funcs: Vec<_> = code.get_funcs().iter().collect();
-                    funcs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
-                    match artefact.declarations({
-                        funcs.iter().map(|v| {
-                            (
-                                v.0,
-                                if v.0 == "_start" || v.0 == "main" {
-                                    Decl::function().global().into()
-                                } else if v.1.start == 0 && v.1.end == 0 {
-                                    Decl::function_import().into()
-                                } else {
-                                    Decl::function().into()
-                                },
-                            )
-                        })
-                    }) {
-                        Ok(_) => (),
-                        Err(e) => {
-                            eprintln!("Error declaring functions: {}", e);
-                            return;
-                        }
-                    }
-
-                    for (func, range) in funcs {
-                        if range.start == 0 && range.end == 0 {
-                            continue;
-                        }
-
-                        match artefact.define(func, code.data()[range.start..range.end].to_owned())
-                        {
+            for (addr, (to, _rel)) in code.get_relocation_table() {
+                for (from, range) in code.get_funcs() {
+                    if range.start <= *addr && *addr < range.end {
+                        match artefact.link(Link {
+                            from,
+                            to,
+                            at: (addr - range.start) as u64,
+                        }) {
                             Ok(_) => (),
                             Err(e) => {
-                                eprintln!("Error defining function: {}", e);
+                                eprintln!("Error linking: {}", e);
                                 return;
                             }
                         }
+                        break;
                     }
+                }
+            }
 
-                    for (addr, (to, _rel)) in code.get_relocation_table() {
-                        for (from, range) in code.get_funcs() {
-                            if range.start <= *addr && *addr < range.end {
-                                match artefact.link(Link {
-                                    from,
-                                    to,
-                                    at: (addr - range.start) as u64,
-                                }) {
-                                    Ok(_) => (),
-                                    Err(e) => {
-                                        eprintln!("Error linking: {}", e);
-                                        return;
-                                    }
+            match artefact.write(match File::create(&f) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Error getting file {}: {}", f, e);
+                    exit(1);
+                }
+            }) {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("Error writing artefact to file: {}", e);
+                }
+            }
+        }
+
+        Some("llir") => {
+            let contents = contents.unwrap();
+            let root = check(&contents);
+
+            let module = backend_ir::convert_frontend_ir_to_backend_ir(
+                root.modules.into_iter().next().unwrap().1,
+            );
+            println!("{}", module);
+        }
+
+        Some("run") => {
+            let contents = contents.unwrap();
+            let root = check(&contents);
+
+            let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
+                root.modules.into_iter().next().unwrap().1,
+            );
+
+            let mut code = match compile(&mut module) {
+                Some(v) => v,
+                None => return,
+            };
+
+            let map = unsafe {
+                libc::mmap(
+                    std::ptr::null_mut(),
+                    code.len(),
+                    libc::PROT_WRITE | libc::PROT_READ,
+                    libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
+                    0,
+                    0,
+                )
+            } as *mut u8;
+            code.relocate(map);
+
+            unsafe {
+                pthread_jit_write_protect_np(false);
+                std::ptr::copy(code.data().as_ptr(), map, code.len());
+                pthread_jit_write_protect_np(true);
+                libc::mprotect(
+                    map as *mut libc::c_void,
+                    code.len(),
+                    libc::PROT_READ | libc::PROT_EXEC,
+                );
+                let exec = code.get_fn("main", map).unwrap();
+                let v = exec();
+                println!("{:#x}", v);
+            }
+
+            unsafe {
+                libc::munmap(map as *mut libc::c_void, code.len());
+            }
+        }
+
+        Some("repl") | None => todo!(),
+        _ => unreachable!("Invalid subcommand"),
+    }
+
+    /*
+        if args.len() > 0 {
+            match args.next().unwrap().as_str() {
+                "build" => match args.next() {
+                    Some(mut f) => {
+                        let contents = match fs::read_to_string(&f) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("error reading file {}: {}", f, e);
+                                exit(1);
+                            }
+                        };
+
+                        let root = check(&contents, ExecMode::All);
+                        let mut code = match compile(root, ExecMode::All) {
+                            Some(v) => v,
+                            None => return,
+                        };
+
+                        match DEFAULT_ARCH {
+                            "aarch64" => todo!(),
+                            "riscv64" => todo!(),
+                            "wasm64" => todo!(),
+                            "x86_64" => x86_64::codegen::generate_start_func(&mut code),
+                            _ => panic!("unsupported architecture!"),
+                        }
+                        f.push_str(".o");
+
+                        let mut artefact = ArtifactBuilder::new(Triple::host())
+                            .name(f.clone())
+                            .finish();
+
+                        let mut funcs: Vec<_> = code.get_funcs().iter().collect();
+                        funcs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
+                        match artefact.declarations({
+                            funcs.iter().map(|v| {
+                                (
+                                    v.0,
+                                    if v.0 == "_start" || v.0 == "main" {
+                                        Decl::function().global().into()
+                                    } else if v.1.start == 0 && v.1.end == 0 {
+                                        Decl::function_import().into()
+                                    } else {
+                                        Decl::function().into()
+                                    },
+                                )
+                            })
+                        }) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                eprintln!("Error declaring functions: {}", e);
+                                return;
+                            }
+                        }
+
+                        for (func, range) in funcs {
+                            if range.start == 0 && range.end == 0 {
+                                continue;
+                            }
+
+                            match artefact.define(func, code.data()[range.start..range.end].to_owned())
+                            {
+                                Ok(_) => (),
+                                Err(e) => {
+                                    eprintln!("Error defining function: {}", e);
+                                    return;
                                 }
-                                break;
+                            }
+                        }
+
+                        for (addr, (to, _rel)) in code.get_relocation_table() {
+                            for (from, range) in code.get_funcs() {
+                                if range.start <= *addr && *addr < range.end {
+                                    match artefact.link(Link {
+                                        from,
+                                        to,
+                                        at: (addr - range.start) as u64,
+                                    }) {
+                                        Ok(_) => (),
+                                        Err(e) => {
+                                            eprintln!("Error linking: {}", e);
+                                            return;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+
+                        match artefact.write(match File::create(&f) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("Error getting file {}: {}", f, e);
+                                exit(1);
+                            }
+                        }) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                eprintln!("Error writing artefact to file: {}", e);
                             }
                         }
                     }
 
-                    match artefact.write(match File::create(&f) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("Error getting file {}: {}", f, e);
-                            exit(1);
+                    None => {
+                        eprintln!("Must provide file name with build");
+                        exit(1);
+                    }
+                },
+
+                "check" => (),
+
+                "exec" => match args.next() {
+                    Some(s) => {
+                        let mode = if let Some(m) = args.next() {
+                            match m.as_str() {
+                                "analyse" | "analyze" => ExecMode::Correctness,
+                                "ir" => ExecMode::Ir,
+                                "codegen" => ExecMode::Codegen,
+                                "all" => ExecMode::All,
+                                _ => ExecMode::Exec,
+                            }
+                        } else {
+                            ExecMode::Exec
+                        };
+
+                        let root = check(&s, mode);
+                        let mut code = match compile(root, mode) {
+                            Some(v) => v,
+                            None => return,
+                        };
+
+                        let map = unsafe {
+                            libc::mmap(
+                                std::ptr::null_mut(),
+                                code.len(),
+                                libc::PROT_WRITE | libc::PROT_READ,
+                                libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
+                                0,
+                                0,
+                            )
+                        } as *mut u8;
+                        code.relocate(map);
+                        if let ExecMode::Codegen = mode {
+                            match DEFAULT_ARCH {
+                                "aarch64" => todo!(),
+                                "riscv64" => todo!(),
+                                "wasm64" => todo!(),
+                                "x86_64" => x86_64::disassemble(&code, map),
+                                _ => panic!("unsupported architecture!"),
+                            }
+                            return;
+                        } else if let ExecMode::All = mode {
+                            match DEFAULT_ARCH {
+                                "aarch64" => todo!(),
+                                "riscv64" => todo!(),
+                                "wasm64" => todo!(),
+                                "x86_64" => x86_64::disassemble(&code, map),
+                                _ => panic!("unsupported architecture!"),
+                            }
                         }
-                    }) {
-                        Ok(_) => (),
-                        Err(e) => {
-                            eprintln!("Error writing artefact to file: {}", e);
+
+                        unsafe {
+                            pthread_jit_write_protect_np(false);
+                            std::ptr::copy(code.data().as_ptr(), map, code.len());
+                            pthread_jit_write_protect_np(true);
+                            libc::mprotect(
+                                map as *mut libc::c_void,
+                                code.len(),
+                                libc::PROT_READ | libc::PROT_EXEC,
+                            );
+                            let exec = code.get_fn("main", map).unwrap();
+                            let v = exec();
+                            println!("{:#x}", v);
+                        }
+
+                        unsafe {
+                            libc::munmap(map as *mut libc::c_void, code.len());
                         }
                     }
+
+                    None => {
+                        eprintln!("Must provide command with exec");
+                        exit(1);
+                    }
+                },
+
+                "help" => {
+                    println!(
+                        "usage:
+    {}                          - opens up the repl
+    {} build [options] [files]  - builds the given files
+    {} check [files]            - checks the given files for correctness
+    {} exec [command]           - executes closey code
+    {} help                     - displays this message
+    {} run [options] [files]    - runs the given files
+    {} version                  - displays the version number",
+                        name, name, name, name, name, name, name
+                    );
                 }
 
-                None => {
-                    eprintln!("Must provide file name with build");
+                "run" => (),
+                "version" => {
+                    println!("closeyc version {}", "0.0.1");
+                }
+
+                _ => {
+                    eprintln!("Invalid option. See {} help for help.", name);
                     exit(1);
                 }
-            },
-
-            "check" => (),
-
-            "exec" => match args.next() {
-                Some(s) => {
-                    let mode = if let Some(m) = args.next() {
-                        match m.as_str() {
-                            "analyse" | "analyze" => ExecMode::Correctness,
-                            "ir" => ExecMode::Ir,
-                            "codegen" => ExecMode::Codegen,
-                            "all" => ExecMode::All,
-                            _ => ExecMode::Exec,
-                        }
-                    } else {
-                        ExecMode::Exec
-                    };
-
-                    let root = check(&s, mode);
-                    let mut code = match compile(root, mode) {
-                        Some(v) => v,
-                        None => return,
-                    };
-
-                    let map = unsafe {
-                        libc::mmap(
-                            std::ptr::null_mut(),
-                            code.len(),
-                            libc::PROT_WRITE | libc::PROT_READ,
-                            libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
-                            0,
-                            0,
-                        )
-                    } as *mut u8;
-                    code.relocate(map);
-                    if let ExecMode::Codegen = mode {
-                        match DEFAULT_ARCH {
-                            "aarch64" => todo!(),
-                            "riscv64" => todo!(),
-                            "wasm64" => todo!(),
-                            "x86_64" => x86_64::disassemble(&code, map),
-                            _ => panic!("unsupported architecture!"),
-                        }
-                        return;
-                    } else if let ExecMode::All = mode {
-                        match DEFAULT_ARCH {
-                            "aarch64" => todo!(),
-                            "riscv64" => todo!(),
-                            "wasm64" => todo!(),
-                            "x86_64" => x86_64::disassemble(&code, map),
-                            _ => panic!("unsupported architecture!"),
-                        }
-                    }
-
-                    unsafe {
-                        pthread_jit_write_protect_np(false);
-                        std::ptr::copy(code.data().as_ptr(), map, code.len());
-                        pthread_jit_write_protect_np(true);
-                        libc::mprotect(map as *mut libc::c_void, code.len(), libc::PROT_READ | libc::PROT_EXEC);
-                        let exec = code.get_fn("main", map).unwrap();
-                        let v = exec();
-                        println!("{:#x}", v);
-                    }
-
-                    unsafe {
-                        libc::munmap(map as *mut libc::c_void, code.len());
-                    }
-                }
-
-                None => {
-                    eprintln!("Must provide command with exec");
-                    exit(1);
-                }
-            },
-
-            "help" => {
-                println!(
-                    "usage:
-{}                          - opens up the repl
-{} build [options] [files]  - builds the given files
-{} check [files]            - checks the given files for correctness
-{} exec [command]           - executes closey code
-{} help                     - displays this message
-{} run [options] [files]    - runs the given files
-{} version                  - displays the version number",
-                    name, name, name, name, name, name, name
-                );
             }
-
-            "run" => (),
-            "version" => {
-                println!("closeyc version {}", "0.0.1");
-            }
-
-            _ => {
-                eprintln!("Invalid option. See {} help for help.", name);
-                exit(1);
-            }
+        } else {
+            todo!("repl");
         }
-    } else {
-        todo!("repl");
-    }
+        */
 }
 
-fn check(s: &str, mode: ExecMode) -> Ir {
+fn check(s: &str) -> Ir {
     let ast = match parser::parse(s) {
         Ok(v) => v,
 
@@ -264,32 +552,15 @@ fn check(s: &str, mode: ExecMode) -> Ir {
     };
 
     let _ = correctness::check_correctness(&mut root, true);
-    if let ExecMode::Correctness = mode {
-        println!("{}", root);
-        exit(0);
-    } else if let ExecMode::All = mode {
-        println!("{}", root);
-    }
-
     root
 }
 
-fn compile(root: Ir, mode: ExecMode) -> Option<GeneratedCode> {
-    let mut module =
-        backend_ir::convert_frontend_ir_to_backend_ir(root.modules.into_iter().next().unwrap().1);
-
-    if let ExecMode::Ir = mode {
-        println!("{}", module);
-        return None;
-    } else if let ExecMode::All = mode {
-        println!("{}", module);
-    }
-
+fn compile(module: &mut backend_ir::IrModule) -> Option<GeneratedCode> {
     match DEFAULT_ARCH {
-        "aarch64" => Some(aarch64::codegen::generate_code(&mut module)),
+        "aarch64" => Some(aarch64::codegen::generate_code(module)),
         "riscv64" => todo!(),
         "wasm64" => todo!(),
-        "x86_64" => Some(x86_64::codegen::generate_code(&mut module)),
+        "x86_64" => Some(x86_64::codegen::generate_code(module)),
         _ => panic!("unsupported architecture"),
     }
 }
