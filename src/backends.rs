@@ -37,7 +37,7 @@ pub const DEFAULT_OS: &str = "macos";
 #[derive(Default)]
 pub struct GeneratedCode {
     func_addrs: HashMap<String, Range<usize>>,
-    func_refs: HashMap<usize, (String, bool)>,
+    func_refs: HashMap<usize, String>,
     data: Vec<u8>,
 }
 
@@ -65,27 +65,6 @@ impl GeneratedCode {
         &self.data
     }
 
-    /// Relocates all function addresses to their offset plus the base pointer provided.
-    pub fn relocate(&mut self, base: *const u8) {
-        for (code_addr, (func, relative)) in self.func_refs.iter() {
-            if let Some(range) = self.func_addrs.get(func) {
-                let (addr, byte_count) = if *relative {
-                    ((range.start as i32 - *code_addr as i32 - 4) as u64, 4)
-                } else {
-                    (base as u64 + range.start as u64, 8)
-                };
-
-                for (i, byte) in self.data.iter_mut().skip(*code_addr).enumerate() {
-                    if i >= byte_count {
-                        break;
-                    }
-
-                    *byte = ((addr >> (i * 8)) & 0xff) as u8;
-                }
-            }
-        }
-    }
-
     /// Returns executable code as a function.
     ///
     /// # Safety
@@ -110,7 +89,7 @@ impl GeneratedCode {
     }
 
     /// Gets the mapping used to relocate a file.
-    pub fn get_relocation_table(&self) -> &HashMap<usize, (String, bool)> {
+    pub fn get_relocation_table(&self) -> &HashMap<usize, String> {
         &self.func_refs
     }
 }

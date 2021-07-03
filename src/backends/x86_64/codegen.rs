@@ -214,6 +214,30 @@ fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register) {
     }
 }
 
+fn generate_lea(code: &mut GeneratedCode, dest: Register, source: &str) {
+    let dest_location = dest.convert_to_instr_arg();
+    if dest_location.is_register() {
+        code.data.push(0x48 | (dest_location.is_64_bit() << 2));
+        code.data.push(0x8d);
+        code.data.push(0x05 | (dest_location.get_register() << 3));
+        code.func_refs.insert(code.data.len(), source.to_owned());
+        code.data.push(0x00);
+        code.data.push(0x00);
+        code.data.push(0x00);
+        code.data.push(0x00);
+    } else {
+        code.data.push(0x48);
+        code.data.push(0x8d);
+        code.data.push(0x05);
+        code.func_refs.insert(code.data.len(), source.to_owned());
+        code.data.push(0x00);
+        code.data.push(0x00);
+        code.data.push(0x00);
+        code.data.push(0x00);
+        generate_mov(code, dest, Register::Rax);
+    }
+}
+
 /// Generates the _start function, which calls main and the exit syscall.
 pub fn generate_start_func(code: &mut GeneratedCode) {
     code.func_addrs
@@ -223,7 +247,7 @@ pub fn generate_start_func(code: &mut GeneratedCode) {
     // call main
     code.data.push(0xe8);
     code.func_refs
-        .insert(code.len(), (String::from("main"), true));
+        .insert(code.len(), String::from("main"));
     code.data.push(0x00);
     code.data.push(0x00);
     code.data.push(0x00);
@@ -237,7 +261,7 @@ pub fn generate_start_func(code: &mut GeneratedCode) {
     // call exit
     code.data.push(0xe8);
     code.func_refs
-        .insert(code.len(), (String::from("exit"), true));
+        .insert(code.len(), String::from("exit"));
     code.data.push(0x00);
     code.data.push(0x00);
     code.data.push(0x00);
@@ -340,7 +364,6 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 IrInstruction::Load => {
                     if let Some(local) = ssa.local {
                         let local_reg = *local_to_register.get(&local).unwrap();
-                        let local_location = local_reg.convert_to_instr_arg();
 
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
@@ -353,43 +376,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             }
 
                             Some(IrArgument::Function(func)) => {
-                                if local_location.is_register() {
-                                    // mov local, func
-                                    code.data.push(0x48 | local_location.is_64_bit());
-                                    code.data.push(0xb8 | local_location.get_register());
-
-                                    // Insert the label
-                                    code.func_refs
-                                        .insert(code.data.len(), (func.clone(), false));
-
-                                    // Value
-                                    for _ in 0..8 {
-                                        code.data.push(0);
-                                    }
-                                } else {
-                                    // mov rax, func
-                                    code.data.push(0x48);
-                                    code.data.push(0xb8);
-
-                                    // Insert the label
-                                    code.func_refs
-                                        .insert(code.data.len(), (func.clone(), false));
-
-                                    // Value
-                                    for _ in 0..8 {
-                                        code.data.push(0);
-                                    }
-
-                                    if local_location.get_offset() >= stack_allocated_local_count {
-                                        stack_allocated_local_count += 1;
-
-                                        // push rax
-                                        code.data.push(0x50);
-                                    } else {
-                                        // mov [rbp - offset], rax
-                                        generate_mov(&mut code, local_reg, Register::Rax);
-                                    }
-                                }
+                                generate_lea(&mut code, local_reg, func);
                             }
 
                             _ => (),
@@ -424,7 +411,6 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         // First 6 arguments are stored in registers
                         for (i, arg) in ssa.args.iter().skip(1).enumerate() {
                             let arg_reg = Register::convert_arg_register_id(i);
-                            let arg_location = arg_reg.convert_to_instr_arg();
 
                             match arg {
                                 IrArgument::Local(local) => {
@@ -442,18 +428,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 }
 
                                 IrArgument::Function(func) => {
-                                    // mov arg, func
-                                    code.data.push(0x48 | arg_location.is_64_bit());
-                                    code.data.push(0xb8 | arg_location.get_register());
-
-                                    // Insert the label
-                                    code.func_refs
-                                        .insert(code.data.len(), (func.clone(), false));
-
-                                    // Value
-                                    for _ in 0..8 {
-                                        code.data.push(0);
-                                    }
+                                    // lea arg, [rel func]
+                                    generate_lea(&mut code, arg_reg, func);
                                 }
                             }
 
@@ -487,18 +463,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 IrArgument::Argument(_) => todo!(),
 
                                 IrArgument::Function(func) => {
-                                    // mov rax, func
-                                    code.data.push(0x48);
-                                    code.data.push(0xb8);
-
-                                    // Insert the label
-                                    code.func_refs
-                                        .insert(code.data.len(), (func.clone(), false));
-
-                                    // Value
-                                    for _ in 0..8 {
-                                        code.data.push(0);
-                                    }
+                                    // lea rax, [rel func]
+                                    generate_lea(&mut code, Register::Rax, func);
 
                                     // push rax
                                     code.data.push(0x50);
@@ -515,12 +481,13 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 code.data.push(0xe8);
 
                                 // Insert the label
-                                code.func_refs.insert(code.data.len(), (func.clone(), true));
+                                code.func_refs.insert(code.data.len(), func.clone());
 
                                 // Value
-                                for _ in 0..4 {
-                                    code.data.push(0);
-                                }
+                                code.data.push(0x00);
+                                code.data.push(0x00);
+                                code.data.push(0x00);
+                                code.data.push(0x00);
                             }
                         }
                     } else {
@@ -579,3 +546,21 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
     code
 }
+
+/// Relocates all function addresses to their offset.
+pub fn relocate(code: &mut GeneratedCode) {
+    for (code_addr, func) in code.func_refs.iter() {
+        if let Some(range) = code.func_addrs.get(func) {
+            let addr = ((range.start as i32 - *code_addr as i32) as i64 + unsafe { *(code.data.as_ptr().add(*code_addr) as *const i32) } as i64) as u64;
+
+            for (i, byte) in code.data.iter_mut().skip(*code_addr).enumerate() {
+                if i >= 4 {
+                    break;
+                }
+
+                *byte = ((addr >> (i * 8)) & 0xff) as u8;
+            }
+        }
+    }
+}
+
