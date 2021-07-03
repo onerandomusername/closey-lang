@@ -44,4 +44,3 @@ pub fn disassemble(code: &GeneratedCode, base: *const u8) {
         }
     }
 }
-

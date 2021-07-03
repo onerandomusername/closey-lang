@@ -7,7 +7,12 @@ use super::types::{arc, Type};
 
 pub enum CorrectnessError {}
 
-fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrModule, errors: &mut Vec<CorrectnessError>) {
+fn check_sexpr(
+    parent_func: &mut IrFunction,
+    sexpr: &mut SExpr,
+    module: &mut IrModule,
+    errors: &mut Vec<CorrectnessError>,
+) {
     match sexpr {
         SExpr::Empty(_) => todo!(),
 
@@ -94,7 +99,8 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
             let last_index = args_temp.len();
             for (i, arg) in args_temp.into_iter().enumerate() {
                 if let Type::Func(at, rt) = &*ft {
-                    if arg.get_metadata()
+                    if arg
+                        .get_metadata()
                         ._type
                         .is_subtype(at, &module.types, &mut generics_map)
                     {
@@ -110,28 +116,37 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
                     arity = match arity {
                         ArityInfo::Known(v) if v > 0 => ArityInfo::Known(v - 1),
                         ArityInfo::Known(_) => ArityInfo::Unknown,
-                        ArityInfo::Unknown => ArityInfo::Unknown
+                        ArityInfo::Unknown => ArityInfo::Unknown,
                     };
 
-                    if i != last_index - 1 && matches!(arity, ArityInfo::Unknown | ArityInfo::Known(0)) {
+                    if i != last_index - 1
+                        && matches!(arity, ArityInfo::Unknown | ArityInfo::Known(0))
+                    {
                         let mut temp = vec![];
                         swap(&mut temp, args);
-                        **func = SExpr::Application(SExprMetadata {
-                            loc: Location::new(Span {
-                                start: m.loc.span.start,
-                                end: temp.last().unwrap().get_metadata().loc.span.end
-                            }, &m.loc.filename),
-                            loc2: Location::empty(),
-                            origin: m.origin.clone(),
-                            _type: {
-                                let mut ft = ft.clone();
-                                Arc::make_mut(&mut ft).replace_generics(&generics_map);
-                                ft
+                        **func = SExpr::Application(
+                            SExprMetadata {
+                                loc: Location::new(
+                                    Span {
+                                        start: m.loc.span.start,
+                                        end: temp.last().unwrap().get_metadata().loc.span.end,
+                                    },
+                                    &m.loc.filename,
+                                ),
+                                loc2: Location::empty(),
+                                origin: m.origin.clone(),
+                                _type: {
+                                    let mut ft = ft.clone();
+                                    Arc::make_mut(&mut ft).replace_generics(&generics_map);
+                                    ft
+                                },
+                                arity,
+                                tailrec: false,
+                                impure: false,
                             },
-                            arity,
-                            tailrec: false,
-                            impure: false
-                        }, func.clone(), temp);
+                            func.clone(),
+                            temp,
+                        );
                     }
                 } else {
                     panic!("type {} is not a function", func.get_metadata()._type);
@@ -174,7 +189,14 @@ pub fn check_correctness(ir: &mut Ir, _require_main: bool) -> Result<(), Vec<Cor
 
             module.scope.push_scope(true);
             for arg in func.args.iter() {
-                module.scope.put_var(&arg.0, &arg.1, ArityInfo::Unknown, &Location::empty(), true, "");
+                module.scope.put_var(
+                    &arg.0,
+                    &arg.1,
+                    ArityInfo::Unknown,
+                    &Location::empty(),
+                    true,
+                    "",
+                );
             }
 
             let mut body = SExpr::Empty(SExprMetadata::empty());

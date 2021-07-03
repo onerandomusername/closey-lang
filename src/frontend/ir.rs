@@ -298,7 +298,13 @@ impl Display for IrModule {
         }
 
         for (global, raw) in self.globals.iter() {
-            write!(f, "\n        (global {} = func-get {} : {})", global, raw, self.funcs.get(raw).unwrap()._type)?;
+            write!(
+                f,
+                "\n        (global {} = func-get {} : {})",
+                global,
+                raw,
+                self.funcs.get(raw).unwrap()._type
+            )?;
         }
 
         write!(f, ")")
@@ -615,7 +621,9 @@ fn convert_node(
                 impure: false,
             },
             Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)),
-            r.into_iter().map(|r| convert_node(r, filename, funcs, global, seen_funcs, types)).collect(),
+            r.into_iter()
+                .map(|r| convert_node(r, filename, funcs, global, seen_funcs, types))
+                .collect(),
         ),
 
         // Assignment

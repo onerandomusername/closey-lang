@@ -790,10 +790,14 @@ fn application(parser: &mut Parser) -> Result<Ast, ParseError> {
             s.end = right.get_span().end;
             v.push(right);
         } else {
-            func = Ast::Application(Span {
-                start: func.get_span().start,
-                end: right.get_span().end
-            }, Box::new(func), vec![right]);
+            func = Ast::Application(
+                Span {
+                    start: func.get_span().start,
+                    end: right.get_span().end,
+                },
+                Box::new(func),
+                vec![right],
+            );
         }
     }
 }

@@ -197,10 +197,13 @@ fn conversion_helper(
                 Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
             };
 
-            let args: Vec<_> = a.into_iter().map(|a| match get_arg_if_applicable(args_map, a) {
-                Ok(v) => v,
-                Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
-            }).collect();
+            let args: Vec<_> = a
+                .into_iter()
+                .map(|a| match get_arg_if_applicable(args_map, a) {
+                    Ok(v) => v,
+                    Err(e) => IrArgument::Local(conversion_helper(args_map, func, e).unwrap()),
+                })
+                .collect();
 
             use std::iter::once;
             let local = Some(func.get_next_local());

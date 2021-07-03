@@ -1,11 +1,13 @@
 use faerie::{ArtifactBuilder, Decl, Link};
-use target_lexicon::Triple;
 use std::env;
 use std::fs::{self, File};
 use std::process::exit;
+use target_lexicon::Triple;
 
 #[allow(unused_imports)]
-use closeyc::backends::{DEFAULT_ARCH, GeneratedCode, ir as backend_ir, aarch64, riscv64, x86_64, wasm64};
+use closeyc::backends::{
+    aarch64, ir as backend_ir, riscv64, wasm64, x86_64, GeneratedCode, DEFAULT_ARCH,
+};
 use closeyc::frontend::correctness;
 use closeyc::frontend::ir::{self as frontend_ir, Ir};
 use closeyc::frontend::parser;
@@ -47,7 +49,7 @@ fn main() {
                     let root = check(&contents, ExecMode::All);
                     let mut code = match compile(root, ExecMode::All) {
                         Some(v) => v,
-                        None => return
+                        None => return,
                     };
 
                     match DEFAULT_ARCH {
@@ -55,7 +57,7 @@ fn main() {
                         "riscv64" => todo!(),
                         "wasm64" => todo!(),
                         "x86_64" => x86_64::codegen::generate_start_func(&mut code),
-                        _ => panic!("unsupported architecture!")
+                        _ => panic!("unsupported architecture!"),
                     }
                     f.push_str(".o");
 
@@ -66,14 +68,18 @@ fn main() {
                     let mut funcs: Vec<_> = code.get_funcs().iter().collect();
                     funcs.sort_by(|a, b| a.1.start.cmp(&b.1.start));
                     match artefact.declarations({
-                        funcs.iter().map(|v| (v.0,
-                            if v.0 == "_start" || v.0 == "main" {
-                                Decl::function().global().into()
-                            } else if v.1.start == 0 && v.1.end == 0 {
-                                Decl::function_import().into()
-                            } else {
-                                Decl::function().into()
-                            }))
+                        funcs.iter().map(|v| {
+                            (
+                                v.0,
+                                if v.0 == "_start" || v.0 == "main" {
+                                    Decl::function().global().into()
+                                } else if v.1.start == 0 && v.1.end == 0 {
+                                    Decl::function_import().into()
+                                } else {
+                                    Decl::function().into()
+                                },
+                            )
+                        })
                     }) {
                         Ok(_) => (),
                         Err(e) => {
@@ -87,11 +93,12 @@ fn main() {
                             continue;
                         }
 
-                        match artefact.define(func, code.data()[range.start..range.end].to_owned()) {
+                        match artefact.define(func, code.data()[range.start..range.end].to_owned())
+                        {
                             Ok(_) => (),
                             Err(e) => {
                                 eprintln!("Error defining function: {}", e);
-                                return
+                                return;
                             }
                         }
                     }
@@ -99,7 +106,11 @@ fn main() {
                     for (addr, (to, _rel)) in code.get_relocation_table() {
                         for (from, range) in code.get_funcs() {
                             if range.start <= *addr && *addr < range.end {
-                                match artefact.link(Link { from, to, at: (addr - range.start) as u64 }) {
+                                match artefact.link(Link {
+                                    from,
+                                    to,
+                                    at: (addr - range.start) as u64,
+                                }) {
                                     Ok(_) => (),
                                     Err(e) => {
                                         eprintln!("Error linking: {}", e);
@@ -150,10 +161,19 @@ fn main() {
                     let root = check(&s, mode);
                     let mut code = match compile(root, mode) {
                         Some(v) => v,
-                        None => return
+                        None => return,
                     };
 
-                    let map = unsafe { libc::mmap(std::ptr::null_mut(), code.len(), libc::PROT_EXEC | libc::PROT_WRITE | libc::PROT_READ, libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT, 0, 0) } as *mut u8;
+                    let map = unsafe {
+                        libc::mmap(
+                            std::ptr::null_mut(),
+                            code.len(),
+                            libc::PROT_EXEC | libc::PROT_WRITE | libc::PROT_READ,
+                            libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
+                            0,
+                            0,
+                        )
+                    } as *mut u8;
                     code.relocate(map);
                     if let ExecMode::Codegen = mode {
                         match DEFAULT_ARCH {
@@ -161,7 +181,7 @@ fn main() {
                             "riscv64" => todo!(),
                             "wasm64" => todo!(),
                             "x86_64" => x86_64::disassemble(&code, map),
-                            _ => panic!("unsupported architecture!")
+                            _ => panic!("unsupported architecture!"),
                         }
                         return;
                     } else if let ExecMode::All = mode {
@@ -170,7 +190,7 @@ fn main() {
                             "riscv64" => todo!(),
                             "wasm64" => todo!(),
                             "x86_64" => x86_64::disassemble(&code, map),
-                            _ => panic!("unsupported architecture!")
+                            _ => panic!("unsupported architecture!"),
                         }
                     }
 
@@ -254,9 +274,8 @@ fn check(s: &str, mode: ExecMode) -> Ir {
 }
 
 fn compile(root: Ir, mode: ExecMode) -> Option<GeneratedCode> {
-    let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
-        root.modules.into_iter().next().unwrap().1,
-    );
+    let mut module =
+        backend_ir::convert_frontend_ir_to_backend_ir(root.modules.into_iter().next().unwrap().1);
 
     if let ExecMode::Ir = mode {
         println!("{}", module);
@@ -270,6 +289,6 @@ fn compile(root: Ir, mode: ExecMode) -> Option<GeneratedCode> {
         "riscv64" => todo!(),
         "wasm64" => todo!(),
         "x86_64" => Some(x86_64::codegen::generate_code(&mut module)),
-        _ => panic!("unsupported architecture")
+        _ => panic!("unsupported architecture"),
     }
 }

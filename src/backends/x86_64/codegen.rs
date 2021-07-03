@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use super::super::GeneratedCode;
-use super::super::ir::{IrArgument, IrInstruction, IrModule};
 use super::super::super::backends;
+use super::super::ir::{IrArgument, IrInstruction, IrModule};
+use super::super::GeneratedCode;
 
 const ARG_REGISTER_COUNT: usize = 6;
 const NONARG_REGISTER_COUNT: usize = 8;
@@ -160,9 +160,8 @@ fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register) {
             code.data
                 .push(0x48 | dest_location.is_64_bit() | (source_location.is_64_bit() << 2));
             code.data.push(0x89);
-            code.data.push(
-                0xc0 | dest_location.get_register() | (source_location.get_register() << 3),
-            );
+            code.data
+                .push(0xc0 | dest_location.get_register() | (source_location.get_register() << 3));
         }
 
         (true, false) => {
@@ -217,12 +216,14 @@ fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register) {
 
 /// Generates the _start function, which calls main and the exit syscall.
 pub fn generate_start_func(code: &mut GeneratedCode) {
-    code.func_addrs.insert(String::from("_start"), code.len()..code.len() + 1);
+    code.func_addrs
+        .insert(String::from("_start"), code.len()..code.len() + 1);
     code.func_addrs.insert(String::from("exit"), 0..0);
 
     // call main
     code.data.push(0xe8);
-    code.func_refs.insert(code.len(), (String::from("main"), true));
+    code.func_refs
+        .insert(code.len(), (String::from("main"), true));
     code.data.push(0x00);
     code.data.push(0x00);
     code.data.push(0x00);
@@ -235,7 +236,8 @@ pub fn generate_start_func(code: &mut GeneratedCode) {
 
     // call exit
     code.data.push(0xe8);
-    code.func_refs.insert(code.len(), (String::from("exit"), true));
+    code.func_refs
+        .insert(code.len(), (String::from("exit"), true));
     code.data.push(0x00);
     code.data.push(0x00);
     code.data.push(0x00);
@@ -343,7 +345,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         match ssa.args.first() {
                             Some(IrArgument::Argument(arg)) => {
                                 // mov local, [rbp + offset]
-                                generate_mov(&mut code, 
+                                generate_mov(
+                                    &mut code,
                                     local_reg,
                                     Register::convert_arg_register_id(*arg),
                                 );
