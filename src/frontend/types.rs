@@ -48,7 +48,6 @@ pub enum Type {
     Symbol(String),
     Generic(String),
     Func(TypeRc, TypeRc),
-    Curried(TypeRc, TypeRc),
     Union(HashSetWrapper<TypeRc>),
 }
 
@@ -102,18 +101,6 @@ impl Display for Type {
                 write!(f, " -> {}", ret)?;
             }
 
-            // Curried types
-            Type::Curried(arg, ret) => {
-                if let Type::Func(_, _) = **arg {
-                    write!(f, "({})", **arg)?;
-                } else if let Type::Curried(_, _) = **arg {
-                    write!(f, "({})", **arg)?;
-                } else {
-                    write!(f, "{}", **arg)?;
-                }
-                write!(f, " +> {}", ret)?;
-            }
-
             // Union types
             Type::Union(fields) => {
                 let mut bar = false;
@@ -153,32 +140,21 @@ impl Type {
         types: &HashMap<String, TypeRc>,
         generics_map: &mut HashMap<String, TypeRc>,
     ) -> bool {
-        let _type = self;
-
-        if _type == supertype {
+        if self == supertype && !matches!(self, Type::Generic(_)) {
             return true;
         }
 
         match supertype {
             // Primitives
-            Type::Int => *_type == Type::Int,
-            Type::Float => *_type == Type::Float,
-            Type::Bool => *_type == Type::Bool,
-            Type::Word => *_type == Type::Word,
-            Type::Char => *_type == Type::Char,
+            Type::Int => *self == Type::Int,
+            Type::Float => *self == Type::Float,
+            Type::Bool => *self == Type::Bool,
+            Type::Word => *self == Type::Word,
+            Type::Char => *self == Type::Char,
 
             // Functions
             Type::Func(sf, sa) => {
-                if let Type::Func(f, a) = _type {
-                    f.is_subtype(sf, types, generics_map) && a.is_subtype(sa, types, generics_map)
-                } else {
-                    false
-                }
-            }
-
-            // Curried
-            Type::Curried(sf, sa) => {
-                if let Type::Curried(f, a) = _type {
+                if let Type::Func(f, a) = self {
                     f.is_subtype(sf, types, generics_map) && a.is_subtype(sa, types, generics_map)
                 } else {
                     false
@@ -188,7 +164,15 @@ impl Type {
             // Generics
             Type::Generic(g) => {
                 if let Some(t) = generics_map.get(g) {
-                    &**t == supertype
+                    if let Type::Generic(t) = &**t {
+                        if let Type::Generic(s) = self {
+                            t == s
+                        } else {
+                            false
+                        }
+                    } else {
+                        self.is_subtype(&*t.clone(), types, generics_map)
+                    }
                 } else {
                     generics_map.insert(g.clone(), arc::new(self.clone()));
                     true
@@ -198,7 +182,7 @@ impl Type {
             // Union types
             Type::Union(fields) => {
                 // Union types mean the subtype has fields over a subset of fields of the supertype
-                if let Type::Union(sub) = _type {
+                if let Type::Union(sub) = self {
                     for s in sub.0.iter() {
                         let mut is_subtype = false;
                         for f in fields.0.iter() {
@@ -217,7 +201,7 @@ impl Type {
                 }
 
                 for t in fields.0.iter() {
-                    if _type.is_subtype(t, types, generics_map) {
+                    if self.is_subtype(t, types, generics_map) {
                         return true;
                     }
                 }
@@ -238,12 +222,6 @@ impl Type {
         match self {
             // Functions
             Type::Func(f, a) => {
-                Arc::make_mut(f).replace_generics(generics_map);
-                Arc::make_mut(a).replace_generics(generics_map);
-            }
-
-            // Curried
-            Type::Curried(f, a) => {
                 Arc::make_mut(f).replace_generics(generics_map);
                 Arc::make_mut(a).replace_generics(generics_map);
             }
@@ -369,24 +347,6 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
                 (*fields.into_iter().next().unwrap().0).clone()
             } else {
                 Type::Union(HashSetWrapper(fields.into_iter().map(|v| v.0).collect()))
-            }
-        }
-
-        // Curried
-        Ast::Infix(_, op, l, r) if op == "+>" => {
-            let l = convert_ast_to_type(*l, filename);
-            let r = convert_ast_to_type(*r, filename);
-
-            if let Type::UndeclaredTypeError(s) = l {
-                Type::UndeclaredTypeError(s)
-            } else if let Type::DuplicateTypeError(a, b, c) = l {
-                Type::DuplicateTypeError(a, b, c)
-            } else if let Type::UndeclaredTypeError(s) = r {
-                Type::UndeclaredTypeError(s)
-            } else if let Type::DuplicateTypeError(a, b, c) = r {
-                Type::DuplicateTypeError(a, b, c)
-            } else {
-                Type::Curried(arc::new(l), arc::new(r))
             }
         }
 

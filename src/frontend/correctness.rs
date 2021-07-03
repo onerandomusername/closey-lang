@@ -21,6 +21,9 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
                     parent_func.captured_names.push(s.clone());
                     parent_func.captured.insert(s.clone(), _type.clone());
                 }
+            } else if let Some(func) = module.globals.get(s) {
+                *sexpr = SExpr::Function(m.clone(), func.clone());
+                check_sexpr(parent_func, sexpr, module, errors);
             } else {
                 panic!("variable {} not found", s);
             }
@@ -59,10 +62,6 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
                         _type = arc::new(Type::Func(arg.1.clone(), _type));
                     }
 
-                    for captured in func.captured_names.iter().rev() {
-                        _type = arc::new(Type::Curried(func.captured.get(captured).unwrap().clone(), _type));
-                    }
-
                     func._type = _type;
                     m._type = func._type.clone();
                     m.arity = ArityInfo::Known(func.args.len());
@@ -88,21 +87,12 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
             let mut ft = func.get_metadata()._type.clone();
             let mut generics_map = HashMap::new();
 
-            while let Type::Curried(_, f) = &*ft {
-                ft = f.clone();
-            }
-
             use std::mem::swap;
             let mut args_temp = vec![];
             swap(&mut args_temp, args);
             let mut arity = func.get_metadata().arity;
-            for arg in args_temp.into_iter() {
-                if let Type::Curried(_, _) = *ft {
-                    while let Type::Curried(_, f) = &*ft {
-                        ft = f.clone();
-                    }
-                }
-
+            let last_index = args_temp.len();
+            for (i, arg) in args_temp.into_iter().enumerate() {
                 if let Type::Func(at, rt) = &*ft {
                     if arg.get_metadata()
                         ._type
@@ -123,7 +113,7 @@ fn check_sexpr(parent_func: &mut IrFunction, sexpr: &mut SExpr, module: &mut IrM
                         ArityInfo::Unknown => ArityInfo::Unknown
                     };
 
-                    if matches!(arity, ArityInfo::Unknown | ArityInfo::Known(0)) {
+                    if i != last_index - 1 && matches!(arity, ArityInfo::Unknown | ArityInfo::Known(0)) {
                         let mut temp = vec![];
                         swap(&mut temp, args);
                         **func = SExpr::Application(SExprMetadata {
@@ -197,9 +187,6 @@ pub fn check_correctness(ir: &mut Ir, _require_main: bool) -> Result<(), Vec<Cor
                 _type = arc::new(Type::Func(arg.1.clone(), _type));
             }
 
-            for captured in func.captured_names.iter().rev() {
-                _type = arc::new(Type::Curried(func.captured.get(captured).unwrap().clone(), _type));
-            }
             func._type = _type;
 
             module.scope.pop_scope();

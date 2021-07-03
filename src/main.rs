@@ -44,8 +44,8 @@ fn main() {
                         }
                     };
 
-                    let root = check(&contents, ExecMode::Exec);
-                    let mut code = match compile(root, ExecMode::Exec) {
+                    let root = check(&contents, ExecMode::All);
+                    let mut code = match compile(root, ExecMode::All) {
                         Some(v) => v,
                         None => return
                     };
