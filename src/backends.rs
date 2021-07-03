@@ -74,7 +74,7 @@ impl GeneratedCode {
         &self,
         func: &str,
         base: *const u8,
-    ) -> Option<unsafe extern "C" fn() -> u64> {
+    ) -> Option<unsafe extern "C" fn() -> *const u8> {
         if let Some(f) = self.func_addrs.get(func) {
             use std::mem::transmute;
             Some(transmute(base.add(f.start)))

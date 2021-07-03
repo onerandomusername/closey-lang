@@ -29,6 +29,61 @@ enum CloseyCode<'a> {
     Files(Vec<&'a str>),
 }
 
+struct Jit {
+    code: GeneratedCode,
+    mem: *const u8
+}
+
+impl Jit {
+    fn new(mut code: GeneratedCode) -> Jit {
+        let mem = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                code.len(),
+                libc::PROT_WRITE | libc::PROT_READ,
+                libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
+                0,
+                0,
+            )
+        } as *mut u8;
+
+        match DEFAULT_ARCH {
+            "aarch64" => todo!(),
+            "riscv64" => todo!(),
+            "wasm64" => todo!(),
+            "x86_64" => x86_64::codegen::relocate(&mut code),
+            _ => panic!("unsupported architecture!"),
+        }
+
+        unsafe {
+            pthread_jit_write_protect_np(false);
+            std::ptr::copy(code.data().as_ptr(), mem, code.len());
+            libc::mprotect(
+                mem as *mut libc::c_void,
+                code.len(),
+                libc::PROT_READ | libc::PROT_EXEC,
+            );
+            pthread_jit_write_protect_np(true);
+        }
+
+        Jit { code, mem }
+    }
+
+    unsafe fn call(&self, func: &str) -> Option<*const u8> {
+        self.code.get_fn(func, self.mem).map(|v| v())
+    }
+}
+
+impl Drop for Jit {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.mem as *mut libc::c_void, self.code.len());
+        }
+
+        self.mem = std::ptr::null_mut();
+    }
+}
+
 fn main() {
     let files = Arg::with_name("files")
         .multiple(true)
@@ -283,49 +338,17 @@ fn main() {
                 root.modules.into_iter().next().unwrap().1,
             );
 
-            let mut code = match compile(&mut module) {
+            let code = match compile(&mut module) {
                 Some(v) => v,
                 None => return,
             };
 
-            let map = unsafe {
-                libc::mmap(
-                    std::ptr::null_mut(),
-                    code.len(),
-                    libc::PROT_WRITE | libc::PROT_READ,
-                    libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
-                    0,
-                    0,
-                )
-            } as *mut u8;
-            match DEFAULT_ARCH {
-                "aarch64" => todo!(),
-                "riscv64" => todo!(),
-                "wasm64" => todo!(),
-                "x86_64" => x86_64::codegen::relocate(&mut code),
-                _ => panic!("unsupported architecture!"),
-            }
-
-            unsafe {
-                pthread_jit_write_protect_np(false);
-                std::ptr::copy(code.data().as_ptr(), map, code.len());
-                pthread_jit_write_protect_np(true);
-                libc::mprotect(
-                    map as *mut libc::c_void,
-                    code.len(),
-                    libc::PROT_READ | libc::PROT_EXEC,
-                );
-                let exec = code.get_fn("main", map).unwrap();
-                let v = exec();
-                println!("{:#x}", v);
-            }
-
-            unsafe {
-                libc::munmap(map as *mut libc::c_void, code.len());
-            }
+            let jit = Jit::new(code);
+            println!("{:#x}", unsafe { jit.call("main") }.unwrap() as u64);
         }
 
-        Some("repl") | None => todo!(),
+        Some("repl") | None => repl(),
+
         _ => unreachable!("Invalid subcommand"),
     }
 }
@@ -361,4 +384,7 @@ fn compile(module: &mut backend_ir::IrModule) -> Option<GeneratedCode> {
         "x86_64" => Some(x86_64::codegen::generate_code(module)),
         _ => panic!("unsupported architecture"),
     }
+}
+
+fn repl() {
 }
