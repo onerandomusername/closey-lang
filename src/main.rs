@@ -168,7 +168,7 @@ fn main() {
                         libc::mmap(
                             std::ptr::null_mut(),
                             code.len(),
-                            libc::PROT_EXEC | libc::PROT_WRITE | libc::PROT_READ,
+                            libc::PROT_WRITE | libc::PROT_READ,
                             libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
                             0,
                             0,
@@ -198,6 +198,7 @@ fn main() {
                         pthread_jit_write_protect_np(false);
                         std::ptr::copy(code.data().as_ptr(), map, code.len());
                         pthread_jit_write_protect_np(true);
+                        libc::mprotect(map as *mut libc::c_void, code.len(), libc::PROT_READ | libc::PROT_EXEC);
                         let exec = code.get_fn("main", map).unwrap();
                         let v = exec();
                         println!("{:#x}", v);
