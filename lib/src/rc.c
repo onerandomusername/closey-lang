@@ -80,12 +80,14 @@ void* rcalloc(size_t size) {
 }
 
 // Copies a pointer with a given size onto the heap with a reference count of 1.
-void* rccopy(void* ptr, size_t size) {
+void* rccopy(void* ptr, size_t len, size_t size) {
+    if (ptr == ((void*) 0))
+        return ptr;
     void* alloced = rcalloc(size);
-    if (alloced == ((void*) 0) || ptr == ((void*) 0))
+    if (alloced == ((void*) 0))
         return alloced;
 
-    for (size_t i = 0; i < size; i++) {
+    for (size_t i = 0; i < len; i++) {
         ((char*) alloced)[i] = ((char*) ptr)[i];
     }
 
@@ -111,10 +113,6 @@ void rcfree(void* ptr) {
     struct s_rcalloc_header* header = ptr;
     header--;
 
-    if (header->rc) {
+    if (header->rc)
         header->rc--;
-
-        if (header->rc == 0 && header->size > PAGE_SIZE - sizeof(struct s_rcalloc_header))
-            munmap(header, header->size + sizeof(struct s_rcalloc_header));
-    }
 }

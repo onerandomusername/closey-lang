@@ -8,7 +8,7 @@
 void* rcalloc(size_t size);
 
 // Copies a pointer with a given size onto the heap with a reference count of 1.
-void* rccopy(void* ptr, size_t size);
+void* rccopy(void* ptr, size_t len, size_t size);
 
 // Increments the reference count.
 void rcinc(void* ptr);

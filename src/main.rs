@@ -1,5 +1,6 @@
 use clap::{crate_version, App, Arg, SubCommand};
 use faerie::{ArtifactBuilder, Decl, Link};
+use goblin::Object;
 use rustyline::{error::ReadlineError, Editor};
 use std::env;
 use std::fs::{self, File};
@@ -43,7 +44,7 @@ impl Jit {
                 code.len(),
                 libc::PROT_WRITE | libc::PROT_READ,
                 libc::MAP_ANONYMOUS | libc::MAP_PRIVATE | MAP_JIT,
-                0,
+                -1,
                 0,
             )
         } as *mut u8;
@@ -80,8 +81,6 @@ impl Drop for Jit {
         unsafe {
             libc::munmap(self.mem as *mut libc::c_void, self.code.len());
         }
-
-        self.mem = std::ptr::null_mut();
     }
 }
 
@@ -435,3 +434,61 @@ fn repl() {
         }
     }
 }
+
+#[allow(dead_code, unused_mut)]
+fn load_libclosey(path: &str) -> Result<Vec<Jit>, ()> {
+    let buffer = match fs::read(path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error reading {}: {}", path, e);
+            return Err(());
+        }
+    };
+
+    let mut jits = vec![];
+    match Object::parse(&buffer) {
+        Ok(Object::Elf(_)) => todo!(),
+        Ok(Object::Mach(_)) => todo!(),
+        Ok(Object::PE(_)) => todo!(),
+
+        Ok(Object::Archive(ar)) => {
+            for member in ar.members() {
+                let buffer = ar.extract(member, &buffer).unwrap();
+                match Object::parse(buffer) {
+                    Ok(Object::Elf(elf)) => {
+                        println!("{:#?}", elf);
+                    }
+
+                    Ok(Object::Mach(_)) => todo!(),
+
+                    Ok(Object::PE(_)) => todo!(),
+
+                    Ok(Object::Archive(_)) => unreachable!("Archives cannot contain archives!"),
+
+                    Ok(Object::Unknown(magic)) => {
+                        eprintln!("Error reading object file {} in {}: unknown magic number {}", member, path, magic);
+                        return Err(());
+                    }
+
+                    Err(e) => {
+                        eprintln!("Error reading object file {} in {}: {}", member, path, e);
+                        return Err(());
+                    }
+                }
+            }
+
+            Ok(jits)
+        }
+
+        Ok(Object::Unknown(magic)) => {
+            println!("Error parsing {}: unknown magic number {}", path, magic);
+            Err(())
+        }
+
+        Err(e) => {
+            eprintln!("Error parsing {}: {}", path, e);
+            Err(())
+        }
+    }
+}
+

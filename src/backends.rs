@@ -42,7 +42,8 @@ pub struct GeneratedCode {
 }
 
 impl GeneratedCode {
-    pub(crate) fn new() -> GeneratedCode {
+    /// Creates a new empty generated code.
+    pub fn new() -> GeneratedCode {
         GeneratedCode {
             func_addrs: HashMap::new(),
             func_refs: HashMap::new(),
@@ -63,6 +64,11 @@ impl GeneratedCode {
     /// Returns the code as a Vec.
     pub fn data(&self) -> &Vec<u8> {
         &self.data
+    }
+
+    /// Returns the code as a mutable Vec.
+    pub fn data_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.data
     }
 
     /// Returns executable code as a function.
@@ -88,9 +94,19 @@ impl GeneratedCode {
         &self.func_addrs
     }
 
+    /// Gets the mutable mapping from function names to ranges in code.
+    pub fn get_mut_funcs(&mut self) -> &mut HashMap<String, Range<usize>> {
+        &mut self.func_addrs
+    }
+
     /// Gets the mapping used to relocate a file.
     pub fn get_relocation_table(&self) -> &HashMap<usize, String> {
         &self.func_refs
+    }
+
+    /// Gets the mutable mapping used to relocate a file.
+    pub fn get_mut_relocation_table(&mut self) -> &mut HashMap<usize, String> {
+        &mut self.func_refs
     }
 }
 
