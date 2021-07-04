@@ -670,9 +670,43 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     }
                 }
 
-                IrInstruction::RcInc => {}//todo!(),
+                IrInstruction::RcInc => {
+                    let mut register = Register::Rax;
+                    match ssa.args.first().unwrap() {
+                        IrArgument::Local(local) => {
+                            register = *local_to_register.get(local).unwrap();
+                        }
 
-                IrInstruction::RcFuncFree => {}//todo!(),
+                        IrArgument::Argument(arg) => {
+                            register = Register::convert_arg_register_id(*arg);
+                        }
+
+                        IrArgument::Function(_) => ()
+                    }
+
+                    if !matches!(register, Register::Rax) {
+                        // mov rax, register
+                        generate_mov(&mut code, Register::Rax, register, &mut stack_allocated_local_count);
+
+                        // test al, 0x1
+                        code.data.push(0xa8);
+                        code.data.push(0x01);
+
+                        // jne rip+4
+                        code.data.push(0x75);
+                        code.data.push(0x04);
+
+                        // add dword ptr [rax - 8], 0x1
+                        code.data.push(0x83);
+                        code.data.push(0x40);
+                        code.data.push(0xf8);
+                        code.data.push(0x01);
+                    }
+                }
+
+                IrInstruction::RcFuncFree => {
+
+                }
             }
         }
         code.func_addrs.get_mut(&func.name).unwrap().end = code.len();
