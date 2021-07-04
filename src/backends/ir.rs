@@ -174,7 +174,9 @@ fn get_arg_if_applicable<'a>(
             }
         }
 
-        SExpr::Function(_, f) if map.get(f).unwrap().is_empty() => Ok(IrArgument::Function(f.clone())),
+        SExpr::Function(_, f) if map.get(f).unwrap().is_empty() => {
+            Ok(IrArgument::Function(f.clone()))
+        }
 
         _ => Err(sexpr),
     }
@@ -208,13 +210,20 @@ fn conversion_helper(
         Err(SExpr::Function(_, f)) => {
             use std::iter::once;
             let local = Some(func.get_next_local());
-            let args = map.get(f).unwrap().iter().map(|v| get_arg_if_applicable(args_map, &SExpr::Symbol(SExprMetadata::empty(), v.clone()), map).unwrap());
+            let args = map.get(f).unwrap().iter().map(|v| {
+                get_arg_if_applicable(
+                    args_map,
+                    &SExpr::Symbol(SExprMetadata::empty(), v.clone()),
+                    map,
+                )
+                .unwrap()
+            });
             func.ssas.push(IrSsa {
                 local,
                 local_lifetime: 0,
                 local_register: 0,
                 instr: IrInstruction::Apply,
-                args: once(IrArgument::Function(f.clone())).chain(args).collect()
+                args: once(IrArgument::Function(f.clone())).chain(args).collect(),
             });
             local
         }
@@ -304,7 +313,7 @@ fn insert_rc_instructions(func: &mut IrFunction) {
                         local_lifetime: 0,
                         local_register: 0,
                         instr: IrInstruction::RcInc,
-                        args: vec![arg.clone()]
+                        args: vec![arg.clone()],
                     });
                 }
             }
@@ -322,13 +331,16 @@ fn insert_rc_instructions(func: &mut IrFunction) {
                 let lifetime = local_lifetimes.get_mut(&local).unwrap();
                 *lifetime -= 1;
                 if *lifetime == 0 {
-                    func.ssas.insert(i + 1, IrSsa {
-                        local: None,
-                        local_lifetime: 0,
-                        local_register: 0,
-                        instr: IrInstruction::RcFuncFree,
-                        args: vec![IrArgument::Local(local)]
-                    });
+                    func.ssas.insert(
+                        i + 1,
+                        IrSsa {
+                            local: None,
+                            local_lifetime: 0,
+                            local_register: 0,
+                            instr: IrInstruction::RcFuncFree,
+                            args: vec![IrArgument::Local(local)],
+                        },
+                    );
                     i += 1;
                     local_lifetimes.remove(&local);
                 }
@@ -343,7 +355,11 @@ fn insert_rc_instructions(func: &mut IrFunction) {
 pub fn convert_frontend_ir_to_backend_ir(module: &ir::IrModule) -> IrModule {
     let mut new = IrModule { funcs: vec![] };
 
-    let map: HashMap<_, _> = module.funcs.iter().map(|v| (v.0.clone(), v.1.captured_names.clone())).collect();
+    let map: HashMap<_, _> = module
+        .funcs
+        .iter()
+        .map(|v| (v.0.clone(), v.1.captured_names.clone()))
+        .collect();
     for func in module.funcs.iter() {
         let mut f = IrFunction {
             name: func.1.name.clone(),

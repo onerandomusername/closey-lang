@@ -1,6 +1,6 @@
 use clap::{crate_version, App, Arg, SubCommand};
 use faerie::{ArtifactBuilder, Decl, Link};
-use rustyline::{Editor, error::ReadlineError};
+use rustyline::{error::ReadlineError, Editor};
 use std::env;
 use std::fs::{self, File};
 use std::process::exit;
@@ -32,7 +32,7 @@ enum CloseyCode<'a> {
 
 struct Jit {
     code: GeneratedCode,
-    mem: *const u8
+    mem: *const u8,
 }
 
 impl Jit {
@@ -195,7 +195,7 @@ fn main() {
             check(&contents, "Main", &mut root);
 
             let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
-                &root.modules.iter().next().unwrap().1
+                &root.modules.iter().next().unwrap().1,
             );
 
             let mut code = match compile(&mut module) {
@@ -226,7 +226,7 @@ fn main() {
             check(&contents, "Main", &mut root);
 
             let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
-                &root.modules.iter().next().unwrap().1
+                &root.modules.iter().next().unwrap().1,
             );
 
             let mut code = match compile(&mut module) {
@@ -329,7 +329,7 @@ fn main() {
             check(&contents, "Main", &mut root);
 
             let module = backend_ir::convert_frontend_ir_to_backend_ir(
-                &root.modules.iter().next().unwrap().1
+                &root.modules.iter().next().unwrap().1,
             );
             println!("{}", module);
         }
@@ -340,7 +340,7 @@ fn main() {
             check(&contents, "Main", &mut root);
 
             let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
-                &root.modules.iter().next().unwrap().1
+                &root.modules.iter().next().unwrap().1,
             );
 
             let code = match compile(&mut module) {
@@ -413,17 +413,20 @@ fn repl() {
                 };
 
                 let jit = Jit::new(code);
-                println!("{:#x}", unsafe { jit.call(f_module.funcs.iter().next().unwrap().0) }.unwrap() as u64);
-            },
+                println!(
+                    "{:#x}",
+                    unsafe { jit.call(f_module.funcs.iter().next().unwrap().0) }.unwrap() as u64
+                );
+            }
 
             Err(ReadlineError::Interrupted) => {
                 println!("^C");
-            },
+            }
 
             Err(ReadlineError::Eof) => {
                 println!("^D");
                 break;
-            },
+            }
 
             Err(err) => {
                 println!("Error: {}", err);
@@ -432,4 +435,3 @@ fn repl() {
         }
     }
 }
-
