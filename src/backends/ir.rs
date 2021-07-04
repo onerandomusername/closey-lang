@@ -160,21 +160,21 @@ impl Display for IrModule {
     }
 }
 
-fn get_arg_if_applicable(
+fn get_arg_if_applicable<'a>(
     args_map: &HashMap<String, usize>,
-    sexpr: SExpr,
+    sexpr: &'a SExpr,
     map: &HashMap<String, Vec<String>>,
-) -> Result<IrArgument, SExpr> {
+) -> Result<IrArgument, &'a SExpr> {
     match sexpr {
         SExpr::Symbol(_, s) => {
-            if let Some(a) = args_map.get(&s) {
+            if let Some(a) = args_map.get(s) {
                 Ok(IrArgument::Argument(*a))
             } else {
                 todo!("symbols that aren't arguments");
             }
         }
 
-        SExpr::Function(_, f) if map.get(&f).unwrap().is_empty() => Ok(IrArgument::Function(f)),
+        SExpr::Function(_, f) if map.get(f).unwrap().is_empty() => Ok(IrArgument::Function(f.clone())),
 
         _ => Err(sexpr),
     }
@@ -183,7 +183,7 @@ fn get_arg_if_applicable(
 fn conversion_helper(
     args_map: &HashMap<String, usize>,
     func: &mut IrFunction,
-    sexpr: SExpr,
+    sexpr: &SExpr,
     map: &HashMap<String, Vec<String>>,
 ) -> Option<usize> {
     match get_arg_if_applicable(args_map, sexpr, map) {
@@ -208,25 +208,25 @@ fn conversion_helper(
         Err(SExpr::Function(_, f)) => {
             use std::iter::once;
             let local = Some(func.get_next_local());
-            let args = map.get(&f).unwrap().iter().map(|v| get_arg_if_applicable(args_map, SExpr::Symbol(SExprMetadata::empty(), v.clone()), map).unwrap());
+            let args = map.get(f).unwrap().iter().map(|v| get_arg_if_applicable(args_map, &SExpr::Symbol(SExprMetadata::empty(), v.clone()), map).unwrap());
             func.ssas.push(IrSsa {
                 local,
                 local_lifetime: 0,
                 local_register: 0,
                 instr: IrInstruction::Apply,
-                args: once(IrArgument::Function(f)).chain(args).collect()
+                args: once(IrArgument::Function(f.clone())).chain(args).collect()
             });
             local
         }
 
         Err(SExpr::Application(m, f, a)) => {
-            let f = match get_arg_if_applicable(args_map, *f, map) {
+            let f = match get_arg_if_applicable(args_map, &**f, map) {
                 Ok(v) => v,
                 Err(e) => IrArgument::Local(conversion_helper(args_map, func, e, map).unwrap()),
             };
 
             let args: Vec<_> = a
-                .into_iter()
+                .iter()
                 .map(|a| match get_arg_if_applicable(args_map, a, map) {
                     Ok(v) => v,
                     Err(e) => IrArgument::Local(conversion_helper(args_map, func, e, map).unwrap()),
@@ -340,26 +340,27 @@ fn insert_rc_instructions(func: &mut IrFunction) {
 }
 
 /// Converts the frontend IR language to the backend IR language.
-pub fn convert_frontend_ir_to_backend_ir(module: ir::IrModule) -> IrModule {
+pub fn convert_frontend_ir_to_backend_ir(module: &ir::IrModule) -> IrModule {
     let mut new = IrModule { funcs: vec![] };
 
     let map: HashMap<_, _> = module.funcs.iter().map(|v| (v.0.clone(), v.1.captured_names.clone())).collect();
-    for func in module.funcs {
+    for func in module.funcs.iter() {
         let mut f = IrFunction {
-            name: func.1.name,
+            name: func.1.name.clone(),
             argc: func.1.args.len() + func.1.captured.len(),
             ssas: vec![],
         };
         let args_map: HashMap<String, usize> = func
             .1
             .captured_names
-            .into_iter()
+            .iter()
+            .cloned()
             .enumerate()
-            .chain(func.1.args.into_iter().map(|v| v.0).enumerate())
+            .chain(func.1.args.iter().map(|v| v.0.clone()).enumerate())
             .map(|v| (v.1, v.0))
             .collect();
 
-        conversion_helper(&args_map, &mut f, func.1.body, &map);
+        conversion_helper(&args_map, &mut f, &func.1.body, &map);
         f.ssas.push(IrSsa {
             local: None,
             local_lifetime: 0,

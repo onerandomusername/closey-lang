@@ -311,7 +311,7 @@ impl Display for IrModule {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Ir {
     pub modules: HashMap<String, IrModule>,
 }
@@ -326,8 +326,8 @@ impl Display for Ir {
     }
 }
 
-impl Default for Ir {
-    fn default() -> Ir {
+impl Ir {
+    pub fn new() -> Ir {
         Ir {
             modules: HashMap::new(),
         }

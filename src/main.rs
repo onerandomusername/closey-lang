@@ -1,5 +1,6 @@
 use clap::{crate_version, App, Arg, SubCommand};
 use faerie::{ArtifactBuilder, Decl, Link};
+use rustyline::{Editor, error::ReadlineError};
 use std::env;
 use std::fs::{self, File};
 use std::process::exit;
@@ -10,7 +11,7 @@ use closeyc::backends::{
     aarch64, ir as backend_ir, riscv64, wasm64, x86_64, GeneratedCode, DEFAULT_ARCH,
 };
 use closeyc::frontend::correctness;
-use closeyc::frontend::ir::{self as frontend_ir, Ir};
+use closeyc::frontend::ir as frontend_ir;
 use closeyc::frontend::parser;
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -184,16 +185,17 @@ fn main() {
     match matches.subcommand_name() {
         Some("analyse") => {
             let contents = contents.unwrap();
-            let root = check(&contents);
-            println!("{}", root);
+            let mut root = frontend_ir::Ir::new();
+            check(&contents, "Main", &mut root);
         }
 
         Some("assembly") => {
             let contents = contents.unwrap();
-            let root = check(&contents);
+            let mut root = frontend_ir::Ir::new();
+            check(&contents, "Main", &mut root);
 
             let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
-                root.modules.into_iter().next().unwrap().1,
+                &root.modules.iter().next().unwrap().1
             );
 
             let mut code = match compile(&mut module) {
@@ -220,10 +222,11 @@ fn main() {
 
         Some("build") => {
             let contents = contents.unwrap();
-            let root = check(&contents);
+            let mut root = frontend_ir::Ir::new();
+            check(&contents, "Main", &mut root);
 
             let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
-                root.modules.into_iter().next().unwrap().1,
+                &root.modules.iter().next().unwrap().1
             );
 
             let mut code = match compile(&mut module) {
@@ -322,20 +325,22 @@ fn main() {
 
         Some("llir") => {
             let contents = contents.unwrap();
-            let root = check(&contents);
+            let mut root = frontend_ir::Ir::new();
+            check(&contents, "Main", &mut root);
 
             let module = backend_ir::convert_frontend_ir_to_backend_ir(
-                root.modules.into_iter().next().unwrap().1,
+                &root.modules.iter().next().unwrap().1
             );
             println!("{}", module);
         }
 
         Some("run") => {
             let contents = contents.unwrap();
-            let root = check(&contents);
+            let mut root = frontend_ir::Ir::new();
+            check(&contents, "Main", &mut root);
 
             let mut module = backend_ir::convert_frontend_ir_to_backend_ir(
-                root.modules.into_iter().next().unwrap().1,
+                &root.modules.iter().next().unwrap().1
             );
 
             let code = match compile(&mut module) {
@@ -353,7 +358,7 @@ fn main() {
     }
 }
 
-fn check(s: &str) -> Ir {
+fn check(s: &str, mod_name: &str, root: &mut frontend_ir::Ir) {
     let ast = match parser::parse(s) {
         Ok(v) => v,
 
@@ -363,8 +368,7 @@ fn check(s: &str) -> Ir {
         }
     };
 
-    let mut root = Ir::default();
-    match frontend_ir::convert_ast_to_ir("Main", &s, ast, &mut root) {
+    match frontend_ir::convert_ast_to_ir(mod_name, &s, ast, root) {
         Ok(v) => v,
         Err(_) => {
             eprintln!("Error creating ir!");
@@ -372,8 +376,7 @@ fn check(s: &str) -> Ir {
         }
     };
 
-    let _ = correctness::check_correctness(&mut root, true);
-    root
+    let _ = correctness::check_correctness(root, true);
 }
 
 fn compile(module: &mut backend_ir::IrModule) -> Option<GeneratedCode> {
@@ -387,4 +390,46 @@ fn compile(module: &mut backend_ir::IrModule) -> Option<GeneratedCode> {
 }
 
 fn repl() {
+    let mut rl = Editor::<()>::new();
+    let mut root = frontend_ir::Ir::new();
+    let mut i = 0;
+
+    loop {
+        let readline = rl.readline(">>> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(&line);
+
+                let mod_name = format!("m{}", i);
+                i += 1;
+                check(&line, &mod_name, &mut root);
+                let f_module = root.modules.get(&mod_name).unwrap();
+
+                let mut b_module = backend_ir::convert_frontend_ir_to_backend_ir(f_module);
+
+                let code = match compile(&mut b_module) {
+                    Some(v) => v,
+                    None => return,
+                };
+
+                let jit = Jit::new(code);
+                println!("{:#x}", unsafe { jit.call(f_module.funcs.iter().next().unwrap().0) }.unwrap() as u64);
+            },
+
+            Err(ReadlineError::Interrupted) => {
+                println!("^C");
+            },
+
+            Err(ReadlineError::Eof) => {
+                println!("^D");
+                break;
+            },
+
+            Err(err) => {
+                println!("Error: {}", err);
+                break;
+            }
+        }
+    }
 }
+
