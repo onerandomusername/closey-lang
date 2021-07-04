@@ -327,23 +327,32 @@ fn insert_rc_instructions(func: &mut IrFunction) {
             if let Some(local) = ssa.local {
                 local_lifetimes.insert(local, ssa.local_lifetime + 1);
             }
-            for local in local_lifetimes.keys().cloned().collect::<Vec<_>>() {
-                let lifetime = local_lifetimes.get_mut(&local).unwrap();
-                *lifetime -= 1;
-                if *lifetime == 0 {
-                    func.ssas.insert(
-                        i + 1,
-                        IrSsa {
-                            local: None,
-                            local_lifetime: 0,
-                            local_register: 0,
-                            instr: IrInstruction::RcFuncFree,
-                            args: vec![IrArgument::Local(local)],
-                        },
-                    );
-                    i += 1;
-                    local_lifetimes.remove(&local);
-                }
+        } else if let IrInstruction::Call(_) = ssa.instr {
+            if let Some(local) = ssa.local {
+                local_lifetimes.insert(local, ssa.local_lifetime + 1);
+            }
+        }
+
+        for local in local_lifetimes.keys().cloned().collect::<Vec<_>>() {
+            if i == func.ssas.len() - 1 {
+                break;
+            }
+
+            let lifetime = local_lifetimes.get_mut(&local).unwrap();
+            *lifetime -= 1;
+            if *lifetime == 0 {
+                func.ssas.insert(
+                    i + 1,
+                    IrSsa {
+                        local: None,
+                        local_lifetime: 0,
+                        local_register: 0,
+                        instr: IrInstruction::RcFuncFree,
+                        args: vec![IrArgument::Local(local)],
+                    },
+                );
+                i += 1;
+                local_lifetimes.remove(&local);
             }
         }
 
