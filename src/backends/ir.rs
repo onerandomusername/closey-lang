@@ -45,7 +45,7 @@ impl Display for IrInstruction {
 }
 
 /// An argument passed into an instruction in the low level intermediate representation.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum IrArgument {
     /// A local value.
     Local(usize),
@@ -302,7 +302,7 @@ fn calculate_lifetimes(func: &mut IrFunction) {
 
 fn insert_rc_instructions(func: &mut IrFunction) {
     let mut i = 0;
-    let mut local_lifetimes: HashMap<usize, usize> = HashMap::new();
+    let mut local_lifetimes: HashMap<IrArgument, usize> = HashMap::new();
     while let Some(ssa) = func.ssas.get(i) {
         if let IrInstruction::Apply = ssa.instr {
             let mut inserts = vec![];
@@ -325,11 +325,11 @@ fn insert_rc_instructions(func: &mut IrFunction) {
 
             let ssa = func.ssas.get(i).unwrap();
             if let Some(local) = ssa.local {
-                local_lifetimes.insert(local, ssa.local_lifetime + 1);
+                local_lifetimes.insert(IrArgument::Local(local), ssa.local_lifetime + 1);
             }
-        } else if let IrInstruction::Call(_) = ssa.instr {
+        } else if let IrInstruction::Call(true) = ssa.instr {
             if let Some(local) = ssa.local {
-                local_lifetimes.insert(local, ssa.local_lifetime + 1);
+                local_lifetimes.insert(IrArgument::Local(local), ssa.local_lifetime + 1);
             }
         }
 
@@ -341,6 +341,7 @@ fn insert_rc_instructions(func: &mut IrFunction) {
             let lifetime = local_lifetimes.get_mut(&local).unwrap();
             *lifetime -= 1;
             if *lifetime == 0 {
+                local_lifetimes.remove(&local);
                 func.ssas.insert(
                     i + 1,
                     IrSsa {
@@ -348,11 +349,10 @@ fn insert_rc_instructions(func: &mut IrFunction) {
                         local_lifetime: 0,
                         local_register: 0,
                         instr: IrInstruction::RcFuncFree,
-                        args: vec![IrArgument::Local(local)],
+                        args: vec![local],
                     },
                 );
                 i += 1;
-                local_lifetimes.remove(&local);
             }
         }
 
