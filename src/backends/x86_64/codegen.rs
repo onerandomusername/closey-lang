@@ -792,10 +792,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                     // Pop arguments passed into the function and arguments saved
                     let mut pop_count = ssa.args.len() - 1;
-                    if pop_count > ARG_REGISTER_COUNT {
-                        pop_count -= ARG_REGISTER_COUNT;
-                    } else {
-                        pop_count = 0;
+                    if known_arity {
+                        if pop_count > ARG_REGISTER_COUNT {
+                            pop_count -= ARG_REGISTER_COUNT;
+                        } else {
+                            pop_count = 0;
+                        }
                     }
                     pop_count *= 8;
                     if pop_count != 0 {
