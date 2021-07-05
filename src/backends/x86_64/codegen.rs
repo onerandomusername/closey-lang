@@ -142,6 +142,7 @@ impl Register {
         }
     }
 }
+
 fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register, stack_allocated_local_count: &mut usize) {
     let dest_location = dest.convert_to_instr_arg();
     let source_location = source.convert_to_instr_arg();
@@ -247,7 +248,7 @@ pub fn generate_start_func(code: &mut GeneratedCode) {
     // call main
     code.data.push(0xe8);
     code.func_refs.insert(code.len(), String::from("main"));
-    code.data.push(0x00);
+    code.data.push(0x10);
     code.data.push(0x00);
     code.data.push(0x00);
     code.data.push(0x00);
@@ -285,6 +286,20 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         // Add function
         code.func_addrs
             .insert(func.name.clone(), code.len()..code.len() + 1);
+
+        // Offset by 1
+        code.data.push(0x00);
+
+        // Argument count
+        code.data.push((func.argc & 0xff) as u8);
+        code.data.push(((func.argc >>  8) & 0xff) as u8);
+        code.data.push(((func.argc >> 16) & 0xff) as u8);
+        code.data.push(((func.argc >> 24) & 0xff) as u8);
+
+        // Padding
+        while code.data.len() % 16 != 0 {
+            code.data.push(0);
+        }
 
         // push rbp
         code.data.push(0x55);
@@ -615,7 +630,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 code.func_refs.insert(code.data.len(), func.clone());
 
                                 // Value
-                                code.data.push(0x00);
+                                code.data.push(0x10);
                                 code.data.push(0x00);
                                 code.data.push(0x00);
                                 code.data.push(0x00);
@@ -645,10 +660,10 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     }
 
                     // Pop original arguments
-                    for i in 0..func.argc {
+                    for i in (0..func.argc).rev() {
                         let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
                         if !reg.is_register() {
-                            break;
+                            continue;
                         }
 
                         if reg.is_64_bit() != 0 {
@@ -705,7 +720,62 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 }
 
                 IrInstruction::RcFuncFree => {
+                    if !matches!(ssa.args.first().unwrap(), IrArgument::Function(_)) {
+                        // Push arguments
+                        for i in 0..func.argc {
+                            let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                            if !reg.is_register() {
+                                break;
+                            }
 
+                            if reg.is_64_bit() != 0 {
+                                code.data.push(0x41);
+                            }
+
+                            code.data.push(0x50 | reg.get_register());
+                        }
+
+                        let register;
+                        match ssa.args.first().unwrap() {
+                            IrArgument::Local(local) => {
+                                register = *local_to_register.get(local).unwrap();
+                            }
+
+                            IrArgument::Argument(arg) => {
+                                register = Register::convert_arg_register_id(*arg);
+                            }
+
+                            &IrArgument::Function(_) => unreachable!()
+                        }
+
+                        // mov rdi, register
+                        generate_mov(&mut code, Register::Rdi, register, &mut stack_allocated_local_count);
+
+                        // call rcfuncfree
+                        code.data.push(0xe8);
+                        code.func_refs.insert(code.data.len(), String::from("rcfuncfree"));
+                        if !code.func_addrs.contains_key("rcfuncfree") {
+                            code.func_addrs.insert(String::from("rcfuncfree"), 0..0);
+                        }
+                        code.data.push(0x00);
+                        code.data.push(0x00);
+                        code.data.push(0x00);
+                        code.data.push(0x00);
+
+                        // Pop arguments
+                        for i in (0..func.argc).rev() {
+                            let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                            if !reg.is_register() {
+                                continue;
+                            }
+
+                            if reg.is_64_bit() != 0 {
+                                code.data.push(0x41);
+                            }
+
+                            code.data.push(0x50 | reg.get_register());
+                        }
+                    }
                 }
             }
         }

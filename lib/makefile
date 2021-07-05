@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-c -fPIC -nostdlib -Wall
+CFLAGS=-c -fPIC -nostdlib -Wall -O3 -g
 AR=ar
 AFLAGS=rcs
 

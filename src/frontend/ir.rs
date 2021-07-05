@@ -591,19 +591,25 @@ fn convert_node(
         // Infix
         Ast::Infix(span, op, l, r) => {
             if op == "$" {
-                SExpr::Application(
-                    SExprMetadata {
-                        loc: Location::new(span, filename),
-                        loc2: Location::empty(),
-                        origin: String::with_capacity(0),
-                        _type: arc::new(Type::Error),
-                        arity: ArityInfo::Unknown,
-                        tailrec: false,
-                        impure: false,
-                    },
-                    Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)),
-                    vec![convert_node(*r, filename, funcs, global, seen_funcs, types)],
-                )
+                let func = convert_node(*l, filename, funcs, global, seen_funcs, types);
+                let arg = convert_node(*r, filename, funcs, global, seen_funcs, types);
+                if let SExpr::Application(m, f, mut a) = func {
+                    SExpr::Application(m, f, { a.push(arg); a })
+                } else {
+                    SExpr::Application(
+                        SExprMetadata {
+                            loc: Location::new(span, filename),
+                            loc2: Location::empty(),
+                            origin: String::with_capacity(0),
+                            _type: arc::new(Type::Error),
+                            arity: ArityInfo::Unknown,
+                            tailrec: false,
+                            impure: false,
+                        },
+                        Box::new(func),
+                        vec![arg],
+                    )
+                }
             } else {
                 unreachable!("uwu moment");
             }

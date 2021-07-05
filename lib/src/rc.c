@@ -91,6 +91,10 @@ void* rccopy(void* ptr, size_t len, size_t size) {
         ((char*) alloced)[i] = ((char*) ptr)[i];
     }
 
+    for (size_t i = len; i < size; i++) {
+        ((char*) alloced)[i] = ((char*) ptr)[i];
+    }
+
     return alloced;
 }
 
@@ -115,4 +119,30 @@ void rcfree(void* ptr) {
 
     if (header->rc)
         header->rc--;
+}
+
+// Frees a reference counted closure structure.
+void rcfuncfree(void* ptr) {
+    if (((unsigned long long) ptr) & 1)
+        return;
+
+    struct s_rcalloc_header* header = ptr;
+    header--;
+
+    if (header->rc) {
+        if (header->rc == 1) {
+            unsigned long long* closure = ptr;
+            unsigned int* func = (unsigned int*) closure[0];
+            unsigned int argc = *func;
+            for (unsigned int i = 1; i < argc + 1; i++) {
+                if (closure[i] == 0)
+                    break;
+                rcfuncfree((void*) closure[i]);
+            }
+        }
+
+        header->rc--;
+    } else {
+        *((volatile char*) 0) = 69;
+    }
 }

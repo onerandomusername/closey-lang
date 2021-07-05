@@ -186,6 +186,7 @@ fn main() {
             let contents = contents.unwrap();
             let mut root = frontend_ir::Ir::new();
             check(&contents, "Main", &mut root);
+            print!("{}", root);
         }
 
         Some("assembly") => {

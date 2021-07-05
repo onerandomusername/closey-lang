@@ -19,4 +19,7 @@ bool has_one_reference(void* ptr);
 // Decrement the reference count.
 void rcfree(void* ptr);
 
+// Frees a reference counted closure structure.
+void rcfuncfree(void* ptr);
+
 #endif /* RC_H */
