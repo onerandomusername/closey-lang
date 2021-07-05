@@ -467,7 +467,10 @@ fn load_libclosey(path: &str) -> Result<Vec<Jit>, ()> {
                     Ok(Object::Archive(_)) => unreachable!("Archives cannot contain archives!"),
 
                     Ok(Object::Unknown(magic)) => {
-                        eprintln!("Error reading object file {} in {}: unknown magic number {}", member, path, magic);
+                        eprintln!(
+                            "Error reading object file {} in {}: unknown magic number {}",
+                            member, path, magic
+                        );
                         return Err(());
                     }
 
@@ -492,4 +495,3 @@ fn load_libclosey(path: &str) -> Result<Vec<Jit>, ()> {
         }
     }
 }
-

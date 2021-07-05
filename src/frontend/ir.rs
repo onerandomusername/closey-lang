@@ -594,7 +594,10 @@ fn convert_node(
                 let func = convert_node(*l, filename, funcs, global, seen_funcs, types);
                 let arg = convert_node(*r, filename, funcs, global, seen_funcs, types);
                 if let SExpr::Application(m, f, mut a) = func {
-                    SExpr::Application(m, f, { a.push(arg); a })
+                    SExpr::Application(m, f, {
+                        a.push(arg);
+                        a
+                    })
                 } else {
                     SExpr::Application(
                         SExprMetadata {

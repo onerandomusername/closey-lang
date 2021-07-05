@@ -143,7 +143,12 @@ impl Register {
     }
 }
 
-fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register, stack_allocated_local_count: &mut usize) {
+fn generate_mov(
+    code: &mut GeneratedCode,
+    dest: Register,
+    source: Register,
+    stack_allocated_local_count: &mut usize,
+) {
     let dest_location = dest.convert_to_instr_arg();
     let source_location = source.convert_to_instr_arg();
 
@@ -215,7 +220,12 @@ fn generate_mov(code: &mut GeneratedCode, dest: Register, source: Register, stac
     }
 }
 
-fn generate_lea(code: &mut GeneratedCode, dest: Register, source: &str, stack_allocated_local_count: &mut usize) {
+fn generate_lea(
+    code: &mut GeneratedCode,
+    dest: Register,
+    source: &str,
+    stack_allocated_local_count: &mut usize,
+) {
     let dest_location = dest.convert_to_instr_arg();
     if dest_location.is_register() {
         code.data.push(0x48 | (dest_location.is_64_bit() << 2));
@@ -292,7 +302,7 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
         // Argument count
         code.data.push((func.argc & 0xff) as u8);
-        code.data.push(((func.argc >>  8) & 0xff) as u8);
+        code.data.push(((func.argc >> 8) & 0xff) as u8);
         code.data.push(((func.argc >> 16) & 0xff) as u8);
         code.data.push(((func.argc >> 24) & 0xff) as u8);
 
@@ -306,7 +316,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
         let mut stack_allocated_local_count = 0usize;
 
         // mov rbp, rsp
-        generate_mov(&mut code, Register::Rbp, Register::Rsp, &mut stack_allocated_local_count);
+        generate_mov(
+            &mut code,
+            Register::Rbp,
+            Register::Rsp,
+            &mut stack_allocated_local_count,
+        );
 
         let mut used_registers = HashSet::new();
         for ssa in func.ssas.iter() {
@@ -353,7 +368,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                 IrInstruction::Ret => {
                     if let Some(IrArgument::Local(arg)) = ssa.args.first() {
                         let register = local_to_register.get(arg).unwrap();
-                        generate_mov(&mut code, Register::Rax, *register, &mut stack_allocated_local_count);
+                        generate_mov(
+                            &mut code,
+                            Register::Rax,
+                            *register,
+                            &mut stack_allocated_local_count,
+                        );
                     }
 
                     // Pop used registers
@@ -367,7 +387,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     }
 
                     // mov rsp, rbp
-                    generate_mov(&mut code, Register::Rsp, Register::Rbp, &mut stack_allocated_local_count);
+                    generate_mov(
+                        &mut code,
+                        Register::Rsp,
+                        Register::Rbp,
+                        &mut stack_allocated_local_count,
+                    );
 
                     // pop rbp
                     code.data.push(0x5d);
@@ -387,12 +412,17 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     &mut code,
                                     local_reg,
                                     Register::convert_arg_register_id(*arg),
-                                    &mut stack_allocated_local_count
+                                    &mut stack_allocated_local_count,
                                 );
                             }
 
                             Some(IrArgument::Function(func)) => {
-                                generate_lea(&mut code, local_reg, func, &mut stack_allocated_local_count);
+                                generate_lea(
+                                    &mut code,
+                                    local_reg,
+                                    func,
+                                    &mut stack_allocated_local_count,
+                                );
                             }
 
                             _ => (),
@@ -404,9 +434,13 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                     let f = ssa.args.first().unwrap();
                     match f {
                         // TODO: prove or disprove this
-                        IrArgument::Local(_) => unreachable!("Locals are either called or applied earlier"),
+                        IrArgument::Local(_) => {
+                            unreachable!("Locals are either called or applied earlier")
+                        }
 
-                        IrArgument::Argument(_) => unreachable!("Arguments are called with unknown arity"),
+                        IrArgument::Argument(_) => {
+                            unreachable!("Arguments are called with unknown arity")
+                        }
 
                         IrArgument::Function(f) => {
                             for arg in ssa.args.iter().rev() {
@@ -422,7 +456,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                             code.data.push(0x50 | local_location.get_register());
                                         } else {
                                             // mov rax, [rbp - offset]
-                                            generate_mov(&mut code, Register::Rax, *local_reg, &mut stack_allocated_local_count);
+                                            generate_mov(
+                                                &mut code,
+                                                Register::Rax,
+                                                *local_reg,
+                                                &mut stack_allocated_local_count,
+                                            );
 
                                             // push rax
                                             code.data.push(0x50);
@@ -431,7 +470,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                                     IrArgument::Argument(arg) => {
                                         // mov rax, arg
-                                        generate_mov(&mut code, Register::Rax, Register::convert_arg_register_id(*arg), &mut stack_allocated_local_count);
+                                        generate_mov(
+                                            &mut code,
+                                            Register::Rax,
+                                            Register::convert_arg_register_id(*arg),
+                                            &mut stack_allocated_local_count,
+                                        );
 
                                         // push rax
                                         code.data.push(0x50);
@@ -439,21 +483,31 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                                     IrArgument::Function(f) => {
                                         // lea rax, [rel func]
-                                        generate_lea(&mut code, Register::Rax, f, &mut stack_allocated_local_count);
+                                        generate_lea(
+                                            &mut code,
+                                            Register::Rax,
+                                            f,
+                                            &mut stack_allocated_local_count,
+                                        );
 
                                         // push rax
                                         code.data.push(0x50);
                                     }
-
                                 }
                             }
 
                             // mov rax, rsp
-                            generate_mov(&mut code, Register::Rax, Register::Rsp, &mut stack_allocated_local_count);
+                            generate_mov(
+                                &mut code,
+                                Register::Rax,
+                                Register::Rsp,
+                                &mut stack_allocated_local_count,
+                            );
 
                             // Push arguments
                             for i in 0..func.argc {
-                                let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                                let reg =
+                                    Register::convert_arg_register_id(i).convert_to_instr_arg();
                                 if !reg.is_register() {
                                     break;
                                 }
@@ -466,13 +520,18 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             }
 
                             // mov rdi, rax
-                            generate_mov(&mut code, Register::Rdi, Register::Rax, &mut stack_allocated_local_count);
+                            generate_mov(
+                                &mut code,
+                                Register::Rdi,
+                                Register::Rax,
+                                &mut stack_allocated_local_count,
+                            );
 
                             // mov rsi, len
                             let len = ssa.args.len() * 8;
                             code.data.push(0xbe);
-                            code.data.push((len         & 0xff) as u8);
-                            code.data.push(((len >>  8) & 0xff) as u8);
+                            code.data.push((len & 0xff) as u8);
+                            code.data.push(((len >> 8) & 0xff) as u8);
                             code.data.push(((len >> 16) & 0xff) as u8);
                             code.data.push(((len >> 24) & 0xff) as u8);
 
@@ -485,14 +544,15 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 }
                             }
                             code.data.push(0xba);
-                            code.data.push((size         & 0xff) as u8);
-                            code.data.push(((size >>  8) & 0xff) as u8);
+                            code.data.push((size & 0xff) as u8);
+                            code.data.push(((size >> 8) & 0xff) as u8);
                             code.data.push(((size >> 16) & 0xff) as u8);
                             code.data.push(((size >> 24) & 0xff) as u8);
 
                             // call rccopy
                             code.data.push(0xe8);
-                            code.func_refs.insert(code.data.len(), String::from("rccopy"));
+                            code.func_refs
+                                .insert(code.data.len(), String::from("rccopy"));
                             if !code.func_addrs.contains_key("rccopy") {
                                 code.func_addrs.insert(String::from("rccopy"), 0..0);
                             }
@@ -503,7 +563,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                             // Pop original arguments
                             for i in 0..func.argc {
-                                let reg = Register::convert_arg_register_id(i).convert_to_instr_arg();
+                                let reg =
+                                    Register::convert_arg_register_id(i).convert_to_instr_arg();
                                 if !reg.is_register() {
                                     break;
                                 }
@@ -519,14 +580,19 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             code.data.push(0x48);
                             code.data.push(0x81);
                             code.data.push(0xec);
-                            code.data.push((len         & 0xff) as u8);
-                            code.data.push(((len >>  8) & 0xff) as u8);
+                            code.data.push((len & 0xff) as u8);
+                            code.data.push(((len >> 8) & 0xff) as u8);
                             code.data.push(((len >> 16) & 0xff) as u8);
                             code.data.push(((len >> 24) & 0xff) as u8);
 
                             if let Some(local) = ssa.local {
                                 // mov local, rax
-                                generate_mov(&mut code, *local_to_register.get(&local).unwrap(), Register::Rax, &mut stack_allocated_local_count);
+                                generate_mov(
+                                    &mut code,
+                                    *local_to_register.get(&local).unwrap(),
+                                    Register::Rax,
+                                    &mut stack_allocated_local_count,
+                                );
                             }
                         }
                     }
@@ -563,19 +629,34 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                     let local_reg = *local_to_register.get(local).unwrap();
 
                                     // mov arg, local
-                                    generate_mov(&mut code, arg_reg, local_reg, &mut stack_allocated_local_count);
+                                    generate_mov(
+                                        &mut code,
+                                        arg_reg,
+                                        local_reg,
+                                        &mut stack_allocated_local_count,
+                                    );
                                 }
 
                                 IrArgument::Argument(arg) => {
                                     let local_reg = Register::convert_arg_register_id(*arg);
 
                                     // mov arg, local
-                                    generate_mov(&mut code, arg_reg, local_reg, &mut stack_allocated_local_count);
+                                    generate_mov(
+                                        &mut code,
+                                        arg_reg,
+                                        local_reg,
+                                        &mut stack_allocated_local_count,
+                                    );
                                 }
 
                                 IrArgument::Function(func) => {
                                     // lea arg, [rel func]
-                                    generate_lea(&mut code, arg_reg, func, &mut stack_allocated_local_count);
+                                    generate_lea(
+                                        &mut code,
+                                        arg_reg,
+                                        func,
+                                        &mut stack_allocated_local_count,
+                                    );
                                 }
                             }
 
@@ -599,7 +680,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                         code.data.push(0x50 | local_location.get_register());
                                     } else {
                                         // mov rax, [rbp - offset]
-                                        generate_mov(&mut code, Register::Rax, local_reg, &mut stack_allocated_local_count);
+                                        generate_mov(
+                                            &mut code,
+                                            Register::Rax,
+                                            local_reg,
+                                            &mut stack_allocated_local_count,
+                                        );
 
                                         // push rax
                                         code.data.push(0x50);
@@ -610,7 +696,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                                 IrArgument::Function(func) => {
                                     // lea rax, [rel func]
-                                    generate_lea(&mut code, Register::Rax, func, &mut stack_allocated_local_count);
+                                    generate_lea(
+                                        &mut code,
+                                        Register::Rax,
+                                        func,
+                                        &mut stack_allocated_local_count,
+                                    );
 
                                     // push rax
                                     code.data.push(0x50);
@@ -653,8 +744,8 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         code.data.push(0x48);
                         code.data.push(0x81);
                         code.data.push(0xec);
-                        code.data.push((pop_count         & 0xff) as u8);
-                        code.data.push(((pop_count >>  8) & 0xff) as u8);
+                        code.data.push((pop_count & 0xff) as u8);
+                        code.data.push(((pop_count >> 8) & 0xff) as u8);
                         code.data.push(((pop_count >> 16) & 0xff) as u8);
                         code.data.push(((pop_count >> 24) & 0xff) as u8);
                     }
@@ -681,7 +772,12 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
 
                     if let Some(local) = ssa.local {
                         let local_reg = Register::convert_nonarg_register_id(local);
-                        generate_mov(&mut code, local_reg, Register::Rax, &mut stack_allocated_local_count);
+                        generate_mov(
+                            &mut code,
+                            local_reg,
+                            Register::Rax,
+                            &mut stack_allocated_local_count,
+                        );
                     }
                 }
 
@@ -696,12 +792,17 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             register = Register::convert_arg_register_id(*arg);
                         }
 
-                        IrArgument::Function(_) => ()
+                        IrArgument::Function(_) => (),
                     }
 
                     if !matches!(register, Register::Rax) {
                         // mov rax, register
-                        generate_mov(&mut code, Register::Rax, register, &mut stack_allocated_local_count);
+                        generate_mov(
+                            &mut code,
+                            Register::Rax,
+                            register,
+                            &mut stack_allocated_local_count,
+                        );
 
                         // test al, 0x1
                         code.data.push(0xa8);
@@ -745,15 +846,21 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                                 register = Register::convert_arg_register_id(*arg);
                             }
 
-                            &IrArgument::Function(_) => unreachable!()
+                            &IrArgument::Function(_) => unreachable!(),
                         }
 
                         // mov rdi, register
-                        generate_mov(&mut code, Register::Rdi, register, &mut stack_allocated_local_count);
+                        generate_mov(
+                            &mut code,
+                            Register::Rdi,
+                            register,
+                            &mut stack_allocated_local_count,
+                        );
 
                         // call rcfuncfree
                         code.data.push(0xe8);
-                        code.func_refs.insert(code.data.len(), String::from("rcfuncfree"));
+                        code.func_refs
+                            .insert(code.data.len(), String::from("rcfuncfree"));
                         if !code.func_addrs.contains_key("rcfuncfree") {
                             code.func_addrs.insert(String::from("rcfuncfree"), 0..0);
                         }
