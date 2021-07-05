@@ -36,7 +36,6 @@ ld -o file file.o path/to/libclosey.a
 ./file
 ```
 
-
 ## Progress
 See TODO.md. Everything is highly experimental. Be cautious: code may be explosive.
 

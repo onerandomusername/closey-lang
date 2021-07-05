@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-c -fPIC -nostdlib -Wall -O3 -g
+CFLAGS=-c -fPIC -nostdlib -Wall -g -masm=intel -fno-stack-protector
 AR=ar
 AFLAGS=rcs
 

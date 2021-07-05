@@ -120,7 +120,7 @@ fn check_sexpr(
                     };
 
                     if i != last_index - 1
-                        && matches!(arity, ArityInfo::Unknown | ArityInfo::Known(0))
+                        && matches!(arity, ArityInfo::Known(0))
                     {
                         let mut temp = vec![];
                         swap(&mut temp, args);
