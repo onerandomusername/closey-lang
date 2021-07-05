@@ -99,7 +99,7 @@ void* rccopy(void* ptr, size_t len, size_t size) {
 }
 
 // Increments the reference count.
-void rcinc(void* ptr) {
+inline void rcinc(void* ptr) {
     struct s_rcalloc_header* header = ptr;
     header--;
     header->rc++;

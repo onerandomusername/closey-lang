@@ -3,6 +3,7 @@
 
 // Applies a function with the given closed values and passed in arguments.
 void* apply_func(void* func, unsigned int* called_argc, unsigned int saved, void* closed[], unsigned int argc, void* args[]) {
+    asm(".intel_syntax noprefix");
     asm("push rdi");
     asm("push rsi");
     asm("push rdx");
@@ -86,7 +87,6 @@ void* apply_func(void* func, unsigned int* called_argc, unsigned int saved, void
 
 // Calls a function with unknown arity.
 void* call_unknown_arity(void* func, unsigned int called_argc, void* args[]) {
-    asm(".intel_syntax noprefix");
     while (called_argc > 0) {
         if (((unsigned long long) func) & 1) {
             unsigned int argc = *((unsigned int*) func);
@@ -116,8 +116,16 @@ void* call_unknown_arity(void* func, unsigned int called_argc, void* args[]) {
             if (argc <= called_argc + saved) {
                 func = apply_func(func, &called_argc, saved, closure + 1, argc, args);
             } else {
-                // TODO
-                *((volatile char*) 0) = 69;
+                if (!has_one_reference(closure)) {
+                    closure = rccopy(closure, (saved + 1) * 8, (argc + 1) * 8);
+                }
+
+                for (unsigned int i = saved + 1; i < saved + called_argc + 1; i++) {
+                    closure[i] = args[i - saved - 1];
+                    rcinc(closure[i]);
+                }
+
+                return closure;
             }
         }
     }

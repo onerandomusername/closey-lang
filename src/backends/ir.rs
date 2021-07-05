@@ -303,7 +303,7 @@ fn calculate_lifetimes(func: &mut IrFunction) {
 fn insert_rc_instructions(func: &mut IrFunction) {
     let mut i = 0;
     let mut local_lifetimes: HashMap<IrArgument, usize> = HashMap::new();
-    while let Some(ssa) = func.ssas.get(i) {
+    while let Some(mut ssa) = func.ssas.get(i) {
         if let IrInstruction::Apply = ssa.instr {
             let mut inserts = vec![];
             for arg in ssa.args.iter().skip(1) {
@@ -323,14 +323,45 @@ fn insert_rc_instructions(func: &mut IrFunction) {
                 i += 1;
             }
 
-            let ssa = func.ssas.get(i).unwrap();
+            ssa = func.ssas.get(i).unwrap();
             if let Some(local) = ssa.local {
                 local_lifetimes.insert(IrArgument::Local(local), ssa.local_lifetime + 1);
             }
-        } else if let IrInstruction::Call(true) = ssa.instr {
+        } else if let IrInstruction::Call(_) = ssa.instr {
             if let Some(local) = ssa.local {
                 local_lifetimes.insert(IrArgument::Local(local), ssa.local_lifetime + 1);
             }
+        }
+
+        if let IrInstruction::Call(false) = ssa.instr {
+            let mut befores = vec![];
+            let mut afters = vec![];
+            for arg in ssa.args.iter().skip(1) {
+                if !matches!(arg, IrArgument::Function(_)) {
+                    befores.push(IrSsa {
+                        local: None,
+                        local_lifetime: 0,
+                        local_register: 0,
+                        instr: IrInstruction::RcInc,
+                        args: vec![arg.clone()],
+                    });
+                    afters.push(IrSsa {
+                        local: None,
+                        local_lifetime: 0,
+                        local_register: 0,
+                        instr: IrInstruction::RcFuncFree,
+                        args: vec![arg.clone()],
+                    });
+                }
+            }
+
+            let i_inc = afters.len();
+            for (before, after) in befores.into_iter().zip(afters.into_iter()) {
+                func.ssas.insert(i, before);
+                i += 1;
+                func.ssas.insert(i + 1, after);
+            }
+            i += i_inc;
         }
 
         for local in local_lifetimes.keys().cloned().collect::<Vec<_>>() {
