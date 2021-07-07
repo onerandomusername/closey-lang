@@ -21,7 +21,7 @@ static MAP_JIT: i32 = 0x0800;
 static MAP_JIT: i32 = 0;
 
 extern "C" {
-    fn pthread_jit_write_protect_np(_: bool);
+    fn pthread_jit_write_protect_np( _: bool);
 }
 
 #[derive(Debug)]
