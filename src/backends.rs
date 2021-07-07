@@ -83,7 +83,7 @@ impl GeneratedCode {
     ) -> Option<unsafe extern "C" fn() -> *const u8> {
         if let Some(f) = self.func_addrs.get(func) {
             use std::mem::transmute;
-            Some(transmute(base.add(f.start)))
+            Some(transmute(base.add(f.start + 16)))
         } else {
             None
         }
