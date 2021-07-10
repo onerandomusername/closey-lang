@@ -5,3 +5,4 @@ tags
 history.txt
 *.o
 *.a
+*.out

@@ -732,17 +732,32 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                             match arg {
                                 IrArgument::Local(local) => {
                                     // mov rax, local
-                                    generate_mov(&mut code, Register::Rax, *local_to_register.get(local).unwrap(), &mut stack_allocated_local_count);
+                                    generate_mov(
+                                        &mut code,
+                                        Register::Rax,
+                                        *local_to_register.get(local).unwrap(),
+                                        &mut stack_allocated_local_count,
+                                    );
                                 }
 
                                 IrArgument::Argument(arg) => {
                                     // mov rax, arg
-                                    generate_mov(&mut code, Register::Rax, Register::convert_arg_register_id(*arg), &mut stack_allocated_local_count);
+                                    generate_mov(
+                                        &mut code,
+                                        Register::Rax,
+                                        Register::convert_arg_register_id(*arg),
+                                        &mut stack_allocated_local_count,
+                                    );
                                 }
 
                                 IrArgument::Function(func) => {
                                     // lea rax, [rel func]
-                                    generate_lea(&mut code, Register::Rax, func, &mut stack_allocated_local_count);
+                                    generate_lea(
+                                        &mut code,
+                                        Register::Rax,
+                                        func,
+                                        &mut stack_allocated_local_count,
+                                    );
                                 }
                             }
 
@@ -753,36 +768,58 @@ pub fn generate_code(module: &mut IrModule) -> GeneratedCode {
                         // mov rsi, called_argc
                         let called_argc = ssa.args.len() - 1;
                         code.data.push(0xbe);
-                        code.data.push((called_argc         & 0xff) as u8);
-                        code.data.push(((called_argc >>  8) & 0xff) as u8);
+                        code.data.push((called_argc & 0xff) as u8);
+                        code.data.push(((called_argc >> 8) & 0xff) as u8);
                         code.data.push(((called_argc >> 16) & 0xff) as u8);
                         code.data.push(((called_argc >> 24) & 0xff) as u8);
 
                         match ssa.args.first().unwrap() {
                             IrArgument::Local(local) => {
                                 // mov rdi, local
-                                generate_mov(&mut code, Register::Rdi, *local_to_register.get(local).unwrap(), &mut stack_allocated_local_count);
+                                generate_mov(
+                                    &mut code,
+                                    Register::Rdi,
+                                    *local_to_register.get(local).unwrap(),
+                                    &mut stack_allocated_local_count,
+                                );
                             }
 
                             IrArgument::Argument(arg) => {
                                 // mov rdi, arg
-                                generate_mov(&mut code, Register::Rdi, Register::convert_arg_register_id(*arg), &mut stack_allocated_local_count);
+                                generate_mov(
+                                    &mut code,
+                                    Register::Rdi,
+                                    Register::convert_arg_register_id(*arg),
+                                    &mut stack_allocated_local_count,
+                                );
                             }
 
                             IrArgument::Function(func) => {
                                 // lea rdi, [rel func]
-                                generate_lea(&mut code, Register::Rdi, func, &mut stack_allocated_local_count);
+                                generate_lea(
+                                    &mut code,
+                                    Register::Rdi,
+                                    func,
+                                    &mut stack_allocated_local_count,
+                                );
                             }
                         }
 
                         // mov rdx, rsp
-                        generate_mov(&mut code, Register::Rdx, Register::Rsp, &mut stack_allocated_local_count);
+                        generate_mov(
+                            &mut code,
+                            Register::Rdx,
+                            Register::Rsp,
+                            &mut stack_allocated_local_count,
+                        );
 
                         // call call_unknown_arity
                         code.data.push(0xe8);
-                        code.func_refs.insert(code.data.len(), String::from("call_unknown_arity"));
+                        code.func_refs
+                            .insert(code.data.len(), String::from("call_unknown_arity"));
                         if !code.func_addrs.contains_key("call_unknown_arity") {
-                            code.func_addrs.insert(String::from("call_unknown_arity"), 0..0);
+                            code.func_addrs
+                                .insert(String::from("call_unknown_arity"), 0..0);
                         }
                         code.data.push(0x00);
                         code.data.push(0x00);

@@ -119,9 +119,7 @@ fn check_sexpr(
                         ArityInfo::Unknown => ArityInfo::Unknown,
                     };
 
-                    if i != last_index - 1
-                        && matches!(arity, ArityInfo::Known(0))
-                    {
+                    if i != last_index - 1 && matches!(arity, ArityInfo::Known(0)) {
                         let mut temp = vec![];
                         swap(&mut temp, args);
                         **func = SExpr::Application(

@@ -46,7 +46,7 @@ pub enum Type {
     Word,
     Char,
     Symbol(String),
-    Generic(String),
+    Generic(String, usize),
     Func(TypeRc, TypeRc),
     Union(HashSetWrapper<TypeRc>),
 }
@@ -87,8 +87,8 @@ impl Display for Type {
             Type::Symbol(s) => {
                 write!(f, "{}", s)?;
             }
-            Type::Generic(g) => {
-                write!(f, "'{}", g)?;
+            Type::Generic(g, uid) => {
+                write!(f, "'{}${}", g, uid)?;
             }
 
             // Function types
@@ -123,6 +123,12 @@ impl Display for Type {
     }
 }
 
+#[derive(Clone, Hash, Eq, PartialEq)]
+pub struct GenericPair {
+    generic: String,
+    uid: usize
+}
+
 impl Type {
     // sum_hash(&self) -> u64
     // Returns the hash value used by codegenned sum/union types.
@@ -138,9 +144,9 @@ impl Type {
         &self,
         supertype: &Type,
         types: &HashMap<String, TypeRc>,
-        generics_map: &mut HashMap<String, TypeRc>,
+        generics_map: &mut HashMap<GenericPair, TypeRc>,
     ) -> bool {
-        if self == supertype && !matches!(self, Type::Generic(_)) {
+        if !matches!(self, Type::Generic(_, _)) && self == supertype {
             return true;
         }
 
@@ -162,10 +168,15 @@ impl Type {
             }
 
             // Generics
-            Type::Generic(g) => {
-                if let Some(t) = generics_map.get(g) {
-                    if let Type::Generic(t) = &**t {
-                        if let Type::Generic(s) = self {
+            Type::Generic(g, uid) => {
+                let generic_pair = GenericPair {
+                    generic: g.clone(),
+                    uid: *uid,
+                };
+
+                if let Some(t) = generics_map.get(&generic_pair) {
+                    if let Type::Generic(t, _) = &**t {
+                        if let Type::Generic(s, _) = self {
                             t == s
                         } else {
                             false
@@ -173,9 +184,11 @@ impl Type {
                     } else {
                         self.is_subtype(&*t.clone(), types, generics_map)
                     }
-                } else {
-                    generics_map.insert(g.clone(), arc::new(self.clone()));
+                } else if !self.contains_generic(&generic_pair) {
+                    generics_map.insert(generic_pair, arc::new(self.clone()));
                     true
+                } else {
+                    false
                 }
             }
 
@@ -218,7 +231,28 @@ impl Type {
         }
     }
 
-    pub fn replace_generics(&mut self, generics_map: &HashMap<String, TypeRc>) {
+    fn contains_generic(&self, generic: &GenericPair) -> bool {
+        match self {
+            Type::Error |
+            Type::UndeclaredTypeError(_) |
+            Type::DuplicateTypeError(_, _, _) |
+            Type::Unknown |
+            Type::Int |
+            Type::Float |
+            Type::Bool |
+            Type::Word |
+            Type::Char |
+            Type::Symbol(_) => false,
+
+            Type::Generic(g, uid) => generic.generic == *g && generic.uid == *uid,
+
+            Type::Func(a, r) => a.contains_generic(generic) || r.contains_generic(generic),
+
+            Type::Union(_) => todo!(),
+        }
+    }
+
+    pub fn replace_generics(&mut self, generics_map: &HashMap<GenericPair, TypeRc>) {
         match self {
             // Functions
             Type::Func(f, a) => {
@@ -227,8 +261,13 @@ impl Type {
             }
 
             // Generics
-            Type::Generic(g) => {
-                if let Some(t) = generics_map.get(g) {
+            Type::Generic(g, uid) => {
+                let generic_pair = GenericPair {
+                    generic: g.clone(),
+                    uid: *uid
+                };
+
+                if let Some(t) = generics_map.get(&generic_pair) {
                     *self = (**t).clone();
                 }
             }
@@ -251,13 +290,37 @@ impl Type {
             | Type::Symbol(_) => {}
         }
     }
+
+    pub fn get_generics<'a>(&'a self, v: &mut Vec<(&'a str, usize)>) {
+        match self {
+            Type::Error |
+            Type::UndeclaredTypeError(_) |
+            Type::DuplicateTypeError(_, _, _) |
+            Type::Unknown |
+            Type::Int |
+            Type::Float |
+            Type::Bool |
+            Type::Word |
+            Type::Char |
+            Type::Symbol(_) => (),
+
+            Type::Generic(g, uid) => v.push((g, *uid)),
+
+            Type::Func(a, r) => {
+                a.get_generics(v);
+                r.get_generics(v);
+            }
+
+            Type::Union(_) => todo!(),
+        }
+    }
 }
 
 // ast_sum_builder_helper(Ast, &str, &mut HashMap<TypeRc, Span>) -> Type
 // Helper function for building sum/union types.
-fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc, Span>) -> Type {
+fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc, Span>, generic_uids: &mut HashMap<String, usize>, last_uid: &mut usize) -> Type {
     let s = ast.get_span();
-    let v = convert_ast_to_type(ast, filename);
+    let v = convert_ast_to_type(ast, filename, generic_uids, last_uid);
     if let Type::Union(v) = v {
         for v in v.0 {
             if let Some(s2) = fields.remove(&v) {
@@ -286,9 +349,9 @@ fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc,
     Type::Unknown
 }
 
-// convert_ast_to_type(Ast, &IR) -> Type
+// convert_ast_to_type(Ast, &str, &mut HashMap<String, usize>, &mut usize) -> Type
 // Converts an ast node into a type.
-pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
+pub fn convert_ast_to_type(ast: Ast, filename: &str, generic_uids: &mut HashMap<String, usize>, last_uid: &mut usize) -> Type {
     match ast {
         // Symbols
         Ast::Symbol(_, v) => {
@@ -306,13 +369,23 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
         }
 
         // Generics
-        Ast::Generic(_, g) => Type::Generic(g),
+        Ast::Generic(_, g) => {
+            let uid = if generic_uids.contains_key(&g) {
+                *generic_uids.get(&g).unwrap()
+            } else {
+                *last_uid += 1;
+                generic_uids.insert(g.clone(), *last_uid);
+                *last_uid
+            };
+
+            Type::Generic(g, uid)
+        }
 
         // Sum types
         Ast::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
             let mut acc = *l;
-            let t = ast_sum_builder_helper(*r, filename, &mut fields);
+            let t = ast_sum_builder_helper(*r, filename, &mut fields, generic_uids, last_uid);
             if t != Type::Unknown {
                 return t;
             }
@@ -320,7 +393,7 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
             loop {
                 match acc {
                     Ast::Infix(_, op, l, r) if op == "|" => {
-                        let t = ast_sum_builder_helper(*r, filename, &mut fields);
+                        let t = ast_sum_builder_helper(*r, filename, &mut fields, generic_uids, last_uid);
                         if t != Type::Unknown {
                             return t;
                         }
@@ -332,7 +405,7 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
                 }
             }
 
-            let t = ast_sum_builder_helper(acc, filename, &mut fields);
+            let t = ast_sum_builder_helper(acc, filename, &mut fields, generic_uids, last_uid);
             if t != Type::Unknown {
                 return t;
             }
@@ -352,8 +425,8 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str) -> Type {
 
         // Function types
         Ast::Infix(_, op, l, r) if op == "->" => {
-            let l = convert_ast_to_type(*l, filename);
-            let r = convert_ast_to_type(*r, filename);
+            let l = convert_ast_to_type(*l, filename, generic_uids, last_uid);
+            let r = convert_ast_to_type(*r, filename, generic_uids, last_uid);
 
             if let Type::UndeclaredTypeError(s) = l {
                 Type::UndeclaredTypeError(s)
