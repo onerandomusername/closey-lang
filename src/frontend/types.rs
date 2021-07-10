@@ -126,7 +126,7 @@ impl Display for Type {
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct GenericPair {
     generic: String,
-    uid: usize
+    uid: usize,
 }
 
 impl Type {
@@ -233,16 +233,16 @@ impl Type {
 
     fn contains_generic(&self, generic: &GenericPair) -> bool {
         match self {
-            Type::Error |
-            Type::UndeclaredTypeError(_) |
-            Type::DuplicateTypeError(_, _, _) |
-            Type::Unknown |
-            Type::Int |
-            Type::Float |
-            Type::Bool |
-            Type::Word |
-            Type::Char |
-            Type::Symbol(_) => false,
+            Type::Error
+            | Type::UndeclaredTypeError(_)
+            | Type::DuplicateTypeError(_, _, _)
+            | Type::Unknown
+            | Type::Int
+            | Type::Float
+            | Type::Bool
+            | Type::Word
+            | Type::Char
+            | Type::Symbol(_) => false,
 
             Type::Generic(g, uid) => generic.generic == *g && generic.uid == *uid,
 
@@ -264,7 +264,7 @@ impl Type {
             Type::Generic(g, uid) => {
                 let generic_pair = GenericPair {
                     generic: g.clone(),
-                    uid: *uid
+                    uid: *uid,
                 };
 
                 if let Some(t) = generics_map.get(&generic_pair) {
@@ -293,16 +293,16 @@ impl Type {
 
     pub fn get_generics<'a>(&'a self, v: &mut Vec<(&'a str, usize)>) {
         match self {
-            Type::Error |
-            Type::UndeclaredTypeError(_) |
-            Type::DuplicateTypeError(_, _, _) |
-            Type::Unknown |
-            Type::Int |
-            Type::Float |
-            Type::Bool |
-            Type::Word |
-            Type::Char |
-            Type::Symbol(_) => (),
+            Type::Error
+            | Type::UndeclaredTypeError(_)
+            | Type::DuplicateTypeError(_, _, _)
+            | Type::Unknown
+            | Type::Int
+            | Type::Float
+            | Type::Bool
+            | Type::Word
+            | Type::Char
+            | Type::Symbol(_) => (),
 
             Type::Generic(g, uid) => v.push((g, *uid)),
 
@@ -318,7 +318,13 @@ impl Type {
 
 // ast_sum_builder_helper(Ast, &str, &mut HashMap<TypeRc, Span>) -> Type
 // Helper function for building sum/union types.
-fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc, Span>, generic_uids: &mut HashMap<String, usize>, last_uid: &mut usize) -> Type {
+fn ast_sum_builder_helper(
+    ast: Ast,
+    filename: &str,
+    fields: &mut HashMap<TypeRc, Span>,
+    generic_uids: &mut HashMap<String, usize>,
+    last_uid: &mut usize,
+) -> Type {
     let s = ast.get_span();
     let v = convert_ast_to_type(ast, filename, generic_uids, last_uid);
     if let Type::Union(v) = v {
@@ -351,7 +357,12 @@ fn ast_sum_builder_helper(ast: Ast, filename: &str, fields: &mut HashMap<TypeRc,
 
 // convert_ast_to_type(Ast, &str, &mut HashMap<String, usize>, &mut usize) -> Type
 // Converts an ast node into a type.
-pub fn convert_ast_to_type(ast: Ast, filename: &str, generic_uids: &mut HashMap<String, usize>, last_uid: &mut usize) -> Type {
+pub fn convert_ast_to_type(
+    ast: Ast,
+    filename: &str,
+    generic_uids: &mut HashMap<String, usize>,
+    last_uid: &mut usize,
+) -> Type {
     match ast {
         // Symbols
         Ast::Symbol(_, v) => {
@@ -393,7 +404,13 @@ pub fn convert_ast_to_type(ast: Ast, filename: &str, generic_uids: &mut HashMap<
             loop {
                 match acc {
                     Ast::Infix(_, op, l, r) if op == "|" => {
-                        let t = ast_sum_builder_helper(*r, filename, &mut fields, generic_uids, last_uid);
+                        let t = ast_sum_builder_helper(
+                            *r,
+                            filename,
+                            &mut fields,
+                            generic_uids,
+                            last_uid,
+                        );
                         if t != Type::Unknown {
                             return t;
                         }

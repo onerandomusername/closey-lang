@@ -365,7 +365,7 @@ fn convert_node(
     seen_funcs: &mut HashMap<String, usize>,
     types: &mut HashMap<String, TypeRc>,
     generic_uids: &mut HashMap<String, usize>,
-    last_uid: &mut usize
+    last_uid: &mut usize,
 ) -> SExpr {
     match ast {
         Ast::Empty => unreachable!("never empty"),
@@ -593,8 +593,26 @@ fn convert_node(
         // Infix
         Ast::Infix(span, op, l, r) => {
             if op == "$" {
-                let func = convert_node(*l, filename, funcs, global, seen_funcs, types, generic_uids, last_uid);
-                let arg = convert_node(*r, filename, funcs, global, seen_funcs, types, generic_uids, last_uid);
+                let func = convert_node(
+                    *l,
+                    filename,
+                    funcs,
+                    global,
+                    seen_funcs,
+                    types,
+                    generic_uids,
+                    last_uid,
+                );
+                let arg = convert_node(
+                    *r,
+                    filename,
+                    funcs,
+                    global,
+                    seen_funcs,
+                    types,
+                    generic_uids,
+                    last_uid,
+                );
                 if let SExpr::Application(m, f, mut a) = func {
                     SExpr::Application(m, f, {
                         a.push(arg);
@@ -631,15 +649,44 @@ fn convert_node(
                 tailrec: false,
                 impure: false,
             },
-            Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types, generic_uids, last_uid)),
+            Box::new(convert_node(
+                *l,
+                filename,
+                funcs,
+                global,
+                seen_funcs,
+                types,
+                generic_uids,
+                last_uid,
+            )),
             r.into_iter()
-                .map(|r| convert_node(r, filename, funcs, global, seen_funcs, types, generic_uids, last_uid))
+                .map(|r| {
+                    convert_node(
+                        r,
+                        filename,
+                        funcs,
+                        global,
+                        seen_funcs,
+                        types,
+                        generic_uids,
+                        last_uid,
+                    )
+                })
                 .collect(),
         ),
 
         // Assignment
         Ast::Assign(span, name, val) => {
-            let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types, generic_uids, last_uid);
+            let sexpr = convert_node(
+                *val,
+                filename,
+                funcs,
+                false,
+                seen_funcs,
+                types,
+                generic_uids,
+                last_uid,
+            );
             if global && name != "_" {
                 let func_name = if seen_funcs.contains_key(&name) {
                     let seen = seen_funcs.get_mut(&name).unwrap();
@@ -711,9 +758,23 @@ fn convert_node(
         // Assignment with types
         Ast::AssignTyped(span, name, _type, val) => {
             let ts = _type.get_span();
-            let _type = arc::new(types::convert_ast_to_type(*_type, filename, generic_uids, last_uid));
+            let _type = arc::new(types::convert_ast_to_type(
+                *_type,
+                filename,
+                generic_uids,
+                last_uid,
+            ));
 
-            let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types, generic_uids, last_uid);
+            let sexpr = convert_node(
+                *val,
+                filename,
+                funcs,
+                false,
+                seen_funcs,
+                types,
+                generic_uids,
+                last_uid,
+            );
 
             if global && name != "_" {
                 let func_name = if seen_funcs.contains_key(&name) {
@@ -817,7 +878,6 @@ fn convert_node(
             )
         }
         */
-
         // Assigning functions
         Ast::AssignFunction(span, name, args, val) => {
             // Get function id
@@ -857,11 +917,30 @@ fn convert_node(
                 _type: arc::new(Type::Unknown),
                 args: args
                     .into_iter()
-                    .map(|v| (v.0, arc::new(types::convert_ast_to_type(v.1, filename, generic_uids, last_uid))))
+                    .map(|v| {
+                        (
+                            v.0,
+                            arc::new(types::convert_ast_to_type(
+                                v.1,
+                                filename,
+                                generic_uids,
+                                last_uid,
+                            )),
+                        )
+                    })
                     .collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
-                body: convert_node(*val, filename, funcs, false, seen_funcs, types, generic_uids, last_uid),
+                body: convert_node(
+                    *val,
+                    filename,
+                    funcs,
+                    false,
+                    seen_funcs,
+                    types,
+                    generic_uids,
+                    last_uid,
+                ),
                 global,
                 checked: false,
                 written: false,
@@ -934,11 +1013,30 @@ fn convert_node(
                 _type: arc::new(Type::Unknown),
                 args: args
                     .into_iter()
-                    .map(|v| (v.0, arc::new(types::convert_ast_to_type(v.1, filename, generic_uids, last_uid))))
+                    .map(|v| {
+                        (
+                            v.0,
+                            arc::new(types::convert_ast_to_type(
+                                v.1,
+                                filename,
+                                generic_uids,
+                                last_uid,
+                            )),
+                        )
+                    })
                     .collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
-                body: convert_node(*val, filename, funcs, false, seen_funcs, types, generic_uids, last_uid),
+                body: convert_node(
+                    *val,
+                    filename,
+                    funcs,
+                    false,
+                    seen_funcs,
+                    types,
+                    generic_uids,
+                    last_uid,
+                ),
                 global: false,
                 checked: false,
                 written: false,
@@ -983,9 +1081,29 @@ fn convert_node(
                 impure: false,
             },
             a.into_iter()
-                .map(|a| convert_node(a, filename, funcs, false, seen_funcs, types, generic_uids, last_uid))
+                .map(|a| {
+                    convert_node(
+                        a,
+                        filename,
+                        funcs,
+                        false,
+                        seen_funcs,
+                        types,
+                        generic_uids,
+                        last_uid,
+                    )
+                })
                 .collect(),
-            Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types, generic_uids, last_uid)),
+            Box::new(convert_node(
+                *v,
+                filename,
+                funcs,
+                false,
+                seen_funcs,
+                types,
+                generic_uids,
+                last_uid,
+            )),
         ),
 
         /*
@@ -1025,7 +1143,6 @@ fn convert_node(
                 .collect(),
         ),
         */
-
         Ast::Match(_, _, _) => todo!(),
         Ast::Int(_, _) => todo!(),
         Ast::Float(_, _) => todo!(),
@@ -1221,7 +1338,8 @@ pub fn convert_ast_to_ir(
             // let ts = t.get_span().clone();
             let mut last_uid = 0;
             let mut generic_uids = HashMap::new();
-            let t = types::convert_ast_to_type(*t, &module.filename, &mut generic_uids, &mut last_uid);
+            let t =
+                types::convert_ast_to_type(*t, &module.filename, &mut generic_uids, &mut last_uid);
 
             // Check type
             if let Type::UndeclaredTypeError(s) = t {
@@ -1261,7 +1379,7 @@ pub fn convert_ast_to_ir(
                 &mut seen_funcs,
                 &mut module.types,
                 &mut generic_uids,
-                &mut last_uid
+                &mut last_uid,
             );
 
             if let SExpr::Assign(_, a, v) = v {
