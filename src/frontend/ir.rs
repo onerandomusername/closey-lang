@@ -357,6 +357,7 @@ impl IrModule {
 
 // convert_node(Ast, &str, bool, &mut HashMap<String, IrFunction>, &mut HashMap<String, TypeRc>) -> SExpr
 // Converts an ast node into an sexpression.
+#[allow(clippy::too_many_arguments)]
 fn convert_node(
     ast: Ast,
     filename: &str,
